@@ -1,0 +1,13 @@
+{
+  "name": "@idscanner/sdk",
+  "version": "1.0.0",
+  "description": "Vanilla JS SDK for Mobile Identity Document Scanner",
+  "main": "dist/id-scanner.js",
+  "types": "dist/id-scanner.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

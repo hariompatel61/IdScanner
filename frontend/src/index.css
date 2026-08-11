@@ -1,0 +1,210 @@
+/* Modern, Mobile-First CSS Variables */
+:root {
+  --overlay-bg: rgba(0, 0, 0, 0.6);
+  --frame-border: #ffffff;
+  --frame-corner-size: 24px;
+  --frame-corner-width: 4px;
+  --hud-text-color: #ffffff;
+  --btn-bg: #4f46e5;
+  --btn-hover: #4338ca;
+  --border-radius-base: 8px;
+  
+  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background-color: #000;
+  overflow: hidden; /* Prevent scrolling when camera is active */
+  touch-action: none;
+}
+
+.App {
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+}
+
+/* Scanner Container */
+.scanner-container {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Video Layer */
+.video-container {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+.scanner-video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Overlay Mask Layer */
+.scanner-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none; /* Let touches pass through to video/buttons if needed */
+}
+
+.overlay-top, .overlay-bottom {
+  flex: 1;
+  background-color: var(--overlay-bg);
+}
+
+.overlay-middle {
+  display: flex;
+  /* Responsive height based on expected document aspect ratio (e.g. ID card is ~1.58 ratio) */
+  /* Using 30vh for height makes it responsive to portrait/landscape */
+  height: 35vh; 
+  min-height: 200px;
+}
+
+.overlay-left, .overlay-right {
+  flex: 1;
+  background-color: var(--overlay-bg);
+}
+
+.overlay-cutout {
+  width: 85vw; /* Leaves margins on mobile */
+  max-width: 500px; /* Cap width on desktop/tablet */
+  position: relative;
+  background: transparent;
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2); /* Soft inner guide */
+  border-radius: var(--border-radius-base);
+}
+
+/* Frame Corners */
+.corner {
+  position: absolute;
+  width: var(--frame-corner-size);
+  height: var(--frame-corner-size);
+  border: var(--frame-corner-width) solid var(--frame-border);
+}
+
+.top-left {
+  top: -2px;
+  left: -2px;
+  border-bottom: 0;
+  border-right: 0;
+  border-top-left-radius: var(--border-radius-base);
+}
+
+.top-right {
+  top: -2px;
+  right: -2px;
+  border-bottom: 0;
+  border-left: 0;
+  border-top-right-radius: var(--border-radius-base);
+}
+
+.bottom-left {
+  bottom: -2px;
+  left: -2px;
+  border-top: 0;
+  border-right: 0;
+  border-bottom-left-radius: var(--border-radius-base);
+}
+
+.bottom-right {
+  bottom: -2px;
+  right: -2px;
+  border-top: 0;
+  border-left: 0;
+  border-bottom-right-radius: var(--border-radius-base);
+}
+
+/* HUD Layer */
+.scanner-hud {
+  position: fixed;
+  bottom: clamp(16px, 6vh, 48px);
+  left: 0;
+  right: 0;
+  width: 100%;
+  z-index: 999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  pointer-events: auto;
+  padding-bottom: env(safe-area-inset-bottom, 12px);
+}
+
+.hud-message {
+  color: var(--hud-text-color);
+  font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+  background: rgba(15, 23, 42, 0.85);
+  padding: 10px 22px;
+  border-radius: 30px;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  max-width: 88vw;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+.hud-controls {
+  display: flex;
+  gap: 12px;
+  pointer-events: auto;
+  z-index: 1000;
+}
+
+button {
+  padding: 14px 28px;
+  border: none;
+  border-radius: 30px;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  pointer-events: auto !important;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.btn-primary {
+  background-color: var(--btn-bg);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--btn-hover);
+}
+
+.btn-manual-capture {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.9) 0%, rgba(99, 102, 241, 0.9) 100%);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.5);
+  min-height: 48px;
+}
+
+.btn-manual-capture:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Accessibility Focus States */
+button:focus-visible {
+  outline: 3px solid white;
+  outline-offset: 2px;
+}

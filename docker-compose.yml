@@ -1,0 +1,62 @@
+services:
+  scanner-api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: scanner-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "4500:8000"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - scanner-ocr
+
+  scanner-ocr:
+    build:
+      context: ./ocr_worker
+      dockerfile: Dockerfile
+    container_name: scanner-ocr
+    restart: unless-stopped
+    env_file:
+      - .env
+    expose:
+      - "8001"
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    volumes:
+      - ./ocr_worker/app:/app/app
+
+  scanner-web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: scanner-web
+    restart: unless-stopped
+    ports:
+      - "3233:80"
+    environment:
+      - API_URL=http://localhost:4500
+    depends_on:
+      scanner-api:
+        condition: service_healthy
