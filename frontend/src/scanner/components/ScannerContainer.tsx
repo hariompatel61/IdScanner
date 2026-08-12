@@ -244,7 +244,7 @@ export const ScannerContainer: React.FC = () => {
               boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
             }}>
               <div style={{ marginBottom: '16px' }}>
-                <span style={{ color: '#64748b', fontSize: '12px', textTransform: 'uppercase', tracking: '1px', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                <span style={{ color: '#64748b', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
                   Document Type
                 </span>
                 <span style={{ color: '#38bdf8', fontSize: '18px', fontWeight: '600' }}>
@@ -253,7 +253,7 @@ export const ScannerContainer: React.FC = () => {
               </div>
 
               <div style={{ marginBottom: '12px' }}>
-                <span style={{ color: '#64748b', fontSize: '12px', textTransform: 'uppercase', tracking: '1px', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
+                <span style={{ color: '#64748b', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
                   Extracted Identifier
                 </span>
                 <span style={{ color: '#f8fafc', fontSize: '22px', fontWeight: '700', letterSpacing: '2px', fontFamily: 'monospace', wordBreak: 'break-all' }}>

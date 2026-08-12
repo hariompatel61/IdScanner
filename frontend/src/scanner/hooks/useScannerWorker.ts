@@ -37,7 +37,7 @@ export const useScannerWorker = ({ onResult, onError }: UseScannerWorkerProps) =
 
       worker.onerror = (e) => {
         console.error('Worker error:', e);
-        if (onErrorRef.current) onErrorRef.current(new Error(e.message instanceof Error ? e.message.message : String(e)));
+        if (onErrorRef.current) onErrorRef.current(new Error(typeof e.message === 'string' ? e.message : String(e)));
       };
 
       workerRef.current = worker;
