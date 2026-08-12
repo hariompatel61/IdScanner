@@ -1,7 +1,9 @@
-# RIMS Hospital ID Scanner API Integration Documentation
+# Universal Mobile ID Scanner API Documentation
 
 ## 1. Overview
 The Mobile Identity Document Scanner API provides standalone, high-throughput OCR and extraction for Indian identity documents (**Aadhaar Card, PAN Card, Voter ID / EPIC, and ABHA Card**). It accepts an uploaded image payload and returns validated JSON data containing extracted document numbers and field details.
+
+It is designed as a **universal REST API (`multipart/form-data`)** compatible with **Node.js, Python, PHP/Laravel, Java, C#, Flutter, Go, and cURL**.
 
 ---
 
@@ -10,7 +12,7 @@ The Mobile Identity Document Scanner API provides standalone, high-throughput OC
 | Environment | Base URL |
 |---|---|
 | **Production Server** | `https://your-production-domain.com` |
-| **Development / Ngrok Tunnel** | `https://maybell-basifixed-nonsubversively.ngrok-free.dev` |
+| **Development / Local** | `http://localhost:4500` |
 
 ### Health Check Endpoints
 - **Liveness Check**: `GET /health` $\rightarrow$ Returns `HTTP 200 OK` `{"status": "healthy"}`
@@ -120,123 +122,68 @@ The Mobile Identity Document Scanner API provides standalone, high-throughput OC
 
 ---
 
-## 5. RIMS Integration Code Examples
+## 5. Multi-Language Client Code Examples
 
-### 5.1 Laravel HTTP Client Implementation (PHP)
-Place this code directly inside your Laravel Controller (e.g. `PatientRegistrationController.php`):
+### 5.1 Node.js / Express (Axios)
+```javascript
+const axios = require('axios');
+const FormData = require('form-data');
+const fs = require('fs');
 
+async function scanCard() {
+  const form = new FormData();
+  form.append('image', fs.createReadStream('./card.jpg'));
+  form.append('document_type', 'pan');
+
+  const response = await axios.post('http://localhost:4500/api/v1/scan', form, {
+    headers: form.getHeaders()
+  });
+
+  console.log('Result:', response.data);
+}
+```
+
+### 5.2 Python (Requests)
+```python
+import requests
+
+files = {'image': open('aadhaar_card.jpg', 'rb')}
+data = {'document_type': 'aadhaar'}
+
+response = requests.post('http://localhost:4500/api/v1/scan', files=files, data=data)
+result = response.json()
+print("Extracted ID:", result['identifier'])
+```
+
+### 5.3 PHP / Laravel
 ```php
-<?php
-
-namespace App\Http\Controllers;
-
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
 
-class PatientRegistrationController extends Controller
-{
-    /**
-     * Scans uploaded patient ID document and auto-fills registration form.
-     */
-    public function scanPatientDocument(Request $request)
-    {
-        $request->validate([
-            'document_image' => 'required|image|mimes:jpeg,png,jpg,webp|max:5120',
-            'doc_type' => 'nullable|string|in:aadhaar,pan,voter,abha'
-        ]);
-
-        $uploadedFile = $request->file('document_image');
-        $scannerUrl = config('services.id_scanner.url', 'https://maybell-basifixed-nonsubversively.ngrok-free.dev');
-        $apiToken   = config('services.id_scanner.token', null);
-
-        $httpClient = Http::timeout(15);
-        if ($apiToken) {
-            $httpClient->withToken($apiToken);
-        }
-
-        try {
-            $response = $httpClient->attach(
-                'image',
-                file_get_contents($uploadedFile->getRealPath()),
-                $uploadedFile->getClientOriginalName()
-            )->post($scannerUrl . '/api/v1/scan', [
-                'document_type' => $request->input('doc_type')
-            ]);
-
-            if ($response->successful()) {
-                $data = $response->json();
-
-                if ($data['success'] && !$data['requires_rescan']) {
-                    return response()->json([
-                        'status' => 'success',
-                        'document_type' => $data['document_type'],
-                        'identifier' => $data['identifier'],
-                        'fields' => $data['fields'],
-                        'processing_time_ms' => $data['processing_time_ms']
-                    ]);
-                } else {
-                    return response()->json([
-                        'status' => 'rescan_required',
-                        'message' => $data['message'] ?? 'Document text is unreadable or blurry.',
-                        'error_code' => $data['error_code'] ?? 'LOW_CONFIDENCE'
-                    ], 422);
-                }
-            }
-
-            Log::error("ID Scanner API returned status: " . $response->status());
-            return response()->json(['status' => 'error', 'message' => 'Scan service error'], $response->status());
-
-        } catch (\Exception $e) {
-            Log::error("ID Scanner Connection Error: " . $e->getMessage());
-            return response()->json(['status' => 'error', 'message' => 'Unable to connect to scanner service'], 500);
-        }
-    }
-}
-```
-
----
-
-### 5.2 Core PHP cURL Implementation
-```php
-<?php
-
-$imagePath = '/path/to/patient_id.jpg';
-$apiUrl = 'https://maybell-basifixed-nonsubversively.ngrok-free.dev/api/v1/scan';
-
-$ch = curl_init();
-$cfile = new CURLFile($imagePath, 'image/jpeg', basename($imagePath));
-
-curl_setopt_array($ch, [
-    CURLOPT_URL => $apiUrl,
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_POST => true,
-    CURLOPT_TIMEOUT => 15,
-    CURLOPT_POSTFIELDS => [
-        'image' => $cfile,
+$response = Http::attach('image', file_get_contents($imagePath), 'card.jpg')
+    ->post('http://localhost:4500/api/v1/scan', [
         'document_type' => 'pan'
-    ]
-]);
+    ]);
 
-$responseJson = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
-
-if ($httpCode === 200) {
-    $result = json_decode($responseJson, true);
-    print_r($result);
-} else {
-    echo "Scan Error: HTTP " . $httpCode;
-}
+$result = $response->json();
+echo $result['identifier'];
 ```
 
----
+### 5.4 Java (OkHttp)
+```java
+OkHttpClient client = new OkHttpClient();
+RequestBody body = new MultipartBody.Builder()
+    .setType(MultipartBody.FORM)
+    .addFormDataPart("image", "card.jpg", RequestBody.create(new File("card.jpg"), MediaType.parse("image/jpeg")))
+    .addFormDataPart("document_type", "pan")
+    .build();
 
-### 5.3 Command Line cURL Test
-```bash
-curl -X POST "https://maybell-basifixed-nonsubversively.ngrok-free.dev/api/v1/scan" \
-  -F "image=@/path/to/patient_card.jpg" \
-  -F "document_type=aadhaar"
+Request request = new Request.Builder()
+    .url("http://localhost:4500/api/v1/scan")
+    .post(body)
+    .build();
+
+Response response = client.newCall(request).execute();
+System.out.println(response.body().string());
 ```
 
 ---

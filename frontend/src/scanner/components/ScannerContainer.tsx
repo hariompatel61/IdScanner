@@ -288,7 +288,7 @@ export const ScannerContainer: React.FC = () => {
                 boxShadow: '0 4px 14px 0 rgba(79, 70, 229, 0.4)'
               }}
               onClick={() => {
-                alert(`Submitting ${extractedData.idNumber} (${extractedData.docType}) to Hospital ERP...`);
+                alert(`Submitting ${extractedData.idNumber} (${extractedData.docType}) to ERP system...`);
               }}
             >
               Submit Data to ERP

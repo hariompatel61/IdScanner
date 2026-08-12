@@ -116,7 +116,7 @@ async def scan_document(
         doc_type = "voter" if raw_doc_type == "voter_id" else raw_doc_type
         identifier = best_doc_result["identifier"]
 
-        # Build RIMS fields dictionary
+        # Build fields dictionary
         fields: Dict[str, Any] = {}
         if doc_type == "aadhaar":
             fields["aadhaar_number"] = identifier

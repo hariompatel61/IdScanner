@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
     cors_origins: List[str] = ["*"]
-    api_token: Optional[str] = None  # Server-to-server Bearer Token for RIMS (e.g., "rims_sec_token_99812")
+    api_token: Optional[str] = None  # Server-to-server Bearer Token (e.g., "secure_api_token_99812")
     max_image_size_mb: int = 5
     max_image_dimension: int = 960  # Optimized resolution bound for 150ms OCR latency
     ocr_device: str = "cpu"

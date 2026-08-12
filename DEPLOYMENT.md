@@ -1,6 +1,6 @@
 # Production Hosting & Live Deployment Guide
 
-This guide details how to host and deploy the **Mobile Identity Document Scanner (Frontend + Backend API)** live in production for RIMS Hospital.
+This guide details how to host and deploy the **Mobile Identity Document Scanner (Frontend + Backend API)** live in production.
 
 ---
 

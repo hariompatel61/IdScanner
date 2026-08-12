@@ -4,7 +4,7 @@
 - **OCR Engine**: RapidOCR (ONNX CPU Runtime `rapidocr-onnxruntime==1.2.3`).
 - **Model Lifecycle**: Loaded **ONCE** at FastAPI `lifespan` application startup and warmed up with a synthetic inference pass before `/ready` returns `200 OK`. Zero model creation per request.
 - **Image Optimization**: Incoming high-res mobile uploads are decoded in memory (`cv2.imdecode`) with zero disk I/O, and resized to an optimized 960px resolution bound (`settings.max_image_dimension = 960`).
-- **Dual Consumers**: Both our Frontend UI and the RIMS Hospital PHP/Laravel application consume the same unified backend OCR & regex extraction pipeline without duplicate logic.
+- **Dual Consumers**: Both our Frontend UI and external client applications consume the same unified backend OCR & regex extraction pipeline without duplicate logic.
 
 ---
 
@@ -39,7 +39,7 @@
 
 ---
 
-## 5. Horizontal Scaling Configuration for RIMS Production (500+ Scans/Min)
+## 5. Horizontal Scaling Configuration for Production (500+ Scans/Min)
 
 To achieve sustained **500+ scans/minute** with $<1.0\text{s}$ P95 latency in production, deploy the service horizontally across **4 to 8 API container replicas** behind an NGINX / HAProxy load balancer:
 

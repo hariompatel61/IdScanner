@@ -1,4 +1,4 @@
-# Mobile Identity Document Scanner API Specification (RIMS Hospital Integration)
+# Mobile Identity Document Scanner API Specification
 
 ## 1. Overview
 The Mobile Identity Document Scanner API provides high-throughput, low-latency OCR and identity document extraction for **Aadhaar, PAN, Voter ID (EPIC), and ABHA cards**. The backend is optimized for **500+ scans/minute** using ONNX CPU runtime inference.
@@ -122,15 +122,15 @@ Readiness check. Returns `200 OK` when the RapidOCR engine model is initialized 
 
 ---
 
-## 4. Code Snippets for RIMS Developers
+## 4. Code Snippets for Developers
 
-### 4.1 Laravel HTTP Client (Recommended for RIMS)
+### 4.1 Laravel HTTP Client (PHP)
 ```php
 <?php
 
 use Illuminate\Support\Facades\Http;
 
-$imagePath = storage_path('app/scans/patient_pan.jpg');
+$imagePath = storage_path('app/scans/id_card.jpg');
 
 $response = Http::timeout(10)
     ->withToken(config('services.id_scanner.token'))

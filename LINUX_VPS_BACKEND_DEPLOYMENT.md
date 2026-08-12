@@ -1,6 +1,6 @@
 # Linux VPS Production Hosting Guide (Backend API Only)
 
-This guide provides step-by-step instructions for hosting the **FastAPI + RapidOCR Backend API** on a standalone Linux VPS (Ubuntu 22.04 / 24.04 LTS) for production integration with RIMS Hospital.
+This guide provides step-by-step instructions for hosting the **FastAPI + RapidOCR Backend API** on a standalone Linux VPS (Ubuntu 22.04 / 24.04 LTS) for production deployment.
 
 ---
 

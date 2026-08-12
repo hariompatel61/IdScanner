@@ -7,7 +7,7 @@
 [![React](https://img.shields.io/badge/Frontend-React%20%2B%20Vite-61dafb.svg)](https://vitejs.dev/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ed.svg)](docker-compose.yml)
 
-> ⚡ **Real-time Mobile ID Card Scanner & OCR Engine** optimized for **Aadhaar, PAN, Voter ID (EPIC), and ABHA Cards**. Built for extreme throughput (**500+ scans/minute**) with zero disk image storage and zero PII logging.
+> ⚡ **Universal Real-Time Mobile ID Card Scanner & OCR Engine** optimized for **Aadhaar, PAN, Voter ID (EPIC), and ABHA Cards**. Built for extreme throughput (**500+ scans/minute**) with zero disk image storage and zero PII logging. Easily integrates with **ANY** tech stack (Node.js, Python, PHP, Java, C#, Flutter, Go).
 
 ---
 
@@ -18,7 +18,7 @@
 - 🆔 **Indian Document Extractors**: Algorithmic regex and checksum verification for **Aadhaar (Verhoeff Checksum), PAN Card, Voter ID, and ABHA Number/Address**.
 - 🔒 **Privacy & Zero Image Storage**: In-memory image decoding (`cv2.imdecode`) with immediate memory release. Identity images are never saved to disk.
 - 🚀 **High Throughput (500+ Scans/Min)**: Benchmark-verified architecture designed for horizontal container scaling behind NGINX.
-- 🔌 **Standalone RIMS Hospital API Integration**: Production-ready `POST /api/v1/scan` REST API endpoint with native PHP/Laravel, cURL, and Python client support.
+- 🔌 **Universal REST API Integration**: Standard `POST /api/v1/scan` endpoint compatible with Node.js, Python, PHP, Java, C#, Flutter, Go, and cURL.
 
 ---
 
@@ -82,42 +82,107 @@ Tested on standard multi-core CPU hardware using `backend/benchmark/load_test.py
 
 ---
 
-## 🔌 API Integration Reference
+## 🔌 Universal Multi-Language API Code Examples
 
-### Scan Document (`POST /api/v1/scan`)
+The API accepts standard `multipart/form-data` uploads. Here is how to integrate it in your preferred tech stack:
 
-#### Request
-- **Content-Type**: `multipart/form-data`
-- **Fields**:
-  - `image` *(File, Required)*: JPEG / PNG / WEBP image (Max 5MB)
-  - `document_type` *(String, Optional)*: `aadhaar`, `pan`, `voter`, `abha`
+### 1. cURL Command
+```bash
+curl -X POST "http://localhost:4500/api/v1/scan" \
+  -F "image=@/path/to/id_card.jpg" \
+  -F "document_type=pan"
+```
 
-#### Response Example (PAN Card)
-```json
-{
-  "success": true,
-  "document_type": "pan",
-  "identifier": "ABCDE1234F",
-  "fields": {
-    "pan_number": "ABCDE1234F"
-  },
-  "confidence": 0.99,
-  "requires_rescan": false,
-  "processing_time_ms": 87,
-  "request_id": "req_a1b2c3d4e5f6"
+### 2. Node.js / Express (Axios)
+```javascript
+const axios = require('axios');
+const FormData = require('form-data');
+const fs = require('fs');
+
+async function scanDocument() {
+  const form = new FormData();
+  form.append('image', fs.createReadStream('./pan_card.jpg'));
+  form.append('document_type', 'pan');
+
+  const response = await axios.post('http://localhost:4500/api/v1/scan', form, {
+    headers: form.getHeaders()
+  });
+
+  console.log(response.data);
+  // Output: { success: true, identifier: 'ABCDE1234F', document_type: 'pan' }
 }
 ```
 
-#### Laravel PHP Integration Example
+### 3. Python (Requests)
+```python
+import requests
+
+files = {'image': open('aadhaar_card.jpg', 'rb')}
+data = {'document_type': 'aadhaar'}
+
+response = requests.post('http://localhost:4500/api/v1/scan', files=files, data=data)
+result = response.json()
+print(result['identifier'])
+```
+
+### 4. PHP / Laravel
 ```php
-$response = Http::timeout(15)
-    ->attach('image', file_get_contents($imagePath), 'card.jpg')
-    ->post('https://your-domain.com/api/v1/scan', [
+use Illuminate\Support\Facades\Http;
+
+$response = Http::attach('image', file_get_contents($imagePath), 'card.jpg')
+    ->post('http://localhost:4500/api/v1/scan', [
         'document_type' => 'pan'
     ]);
 
 $result = $response->json();
-echo $result['identifier']; // Output: ABCDE1234F
+echo $result['identifier'];
+```
+
+### 5. Java (OkHttp / Spring Boot)
+```java
+OkHttpClient client = new OkHttpClient();
+RequestBody body = new MultipartBody.Builder()
+    .setType(MultipartBody.FORM)
+    .addFormDataPart("image", "card.jpg", RequestBody.create(new File("card.jpg"), MediaType.parse("image/jpeg")))
+    .addFormDataPart("document_type", "pan")
+    .build();
+
+Request request = new Request.Builder()
+    .url("http://localhost:4500/api/v1/scan")
+    .post(body)
+    .build();
+
+Response response = client.newCall(request).execute();
+System.out.println(response.body().string());
+```
+
+### 6. Flutter / Dart
+```dart
+import 'package:http/http.dart' as http;
+
+Future<void> scanDocument(String filePath) async {
+  var request = http.MultipartRequest('POST', Uri.parse('http://localhost:4500/api/v1/scan'));
+  request.files.add(await http.MultipartFile.fromPath('image', filePath));
+  request.fields['document_type'] = 'pan';
+
+  var streamedResponse = await request.send();
+  var response = await http.Response.fromStream(streamedResponse);
+  print(response.body);
+}
+```
+
+### 7. C# / .NET
+```csharp
+using var httpClient = new HttpClient();
+using var form = new MultipartFormDataContent();
+using var fileStream = File.OpenRead("card.jpg");
+
+form.Add(new StreamContent(fileStream), "image", "card.jpg");
+form.Add(new StringContent("pan"), "document_type");
+
+var response = await httpClient.PostAsync("http://localhost:4500/api/v1/scan", form);
+var jsonString = await response.Content.ReadAsStringAsync();
+Console.WriteLine(jsonString);
 ```
 
 ---
@@ -142,7 +207,7 @@ IdScanner/
 ├── frontend/                 # React + Vite Camera UI & Worker Logic
 │   └── src/scanner/          # Camera Overlay, HUD, & OpenCV Web Worker
 ├── docker-compose.yml        # Production Docker Stack Orchestration
-├── RIMS_API_DOCUMENTATION.md # Detailed RIMS Integration Specs
+├── API_DOCUMENTATION.md      # Universal API Specifications & Contracts
 └── LINUX_VPS_DEPLOYMENT.md   # Production Linux VPS Hosting Guide
 ```
 
@@ -158,4 +223,4 @@ Distributed under the **MIT License**. See [`LICENSE`](LICENSE) for more informa
 
 Created with ❤️ by **[Hari Om Patel](https://github.com/hariompatel61)**.
 
-⭐ **If you find this repository useful, please consider giving it a star!**
+⭐ **If you find this open-source repository useful, please consider giving it a star!**
