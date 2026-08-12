@@ -1,14 +1,20 @@
-# FastAPI web framework and server
+# FastAPI Web Framework & Async Server
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
+pydantic==2.12.5
 pydantic-settings==2.3.4
 python-multipart==0.0.9
 
-# Image Processing and CV
+# High-Performance OCR Engine (ONNX CPU Runtime)
+rapidocr-onnxruntime==1.2.3
+onnxruntime==1.25.1
+pyclipper==1.4.0
+shapely==2.1.2
+
+# Image Processing & Preprocessing
 opencv-python-headless==4.10.0.84
+numpy==2.4.2
 
-
-
-# Testing
+# Testing & Pure-Python Load Benchmarking
 pytest==8.2.2
-httpx==0.27.0
+httpx==0.28.1

@@ -5,6 +5,7 @@ import uvicorn
 import logging
 
 from app.core.config import settings
+from app.ocr.engine import ocr_engine
 from app.api.health import router as health_router
 from app.api.v1.scan import router as scan_router
 
@@ -12,9 +13,13 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # OCR is now handled by the scanner-ocr microservice.
-    # We no longer load the PaddlePaddle model in the FastAPI process.
-    logger.info("Starting API Gateway...")
+    logger.info("Starting Mobile Identity Document Scanner API...")
+    # Initialize and warm up RapidOCR model ONCE at startup
+    ready = ocr_engine.initialize()
+    if ready:
+        logger.info("RapidOCR model loaded & warmed up successfully. Ready for scans!")
+    else:
+        logger.warning("RapidOCR model failed to initialize on startup.")
     yield
     logger.info("Shutting down API Gateway...")
 
@@ -40,4 +45,4 @@ app.include_router(health_router, tags=["Health"])
 app.include_router(scan_router, prefix="/api/v1", tags=["Scan"])
 
 if __name__ == "__main__":
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=4500, reload=False)

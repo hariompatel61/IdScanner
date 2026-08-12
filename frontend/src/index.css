@@ -1,210 +1,824 @@
-/* Modern, Mobile-First CSS Variables */
+/* =========================================================
+   MODERN MOBILE-FIRST SCANNER CSS
+   Frontend UI only — Backend/API untouched
+   ========================================================= */
+
 :root {
-  --overlay-bg: rgba(0, 0, 0, 0.6);
+  --overlay-bg: rgba(0, 0, 0, 0.58);
   --frame-border: #ffffff;
-  --frame-corner-size: 24px;
+  --frame-corner-size: 28px;
   --frame-corner-width: 4px;
   --hud-text-color: #ffffff;
+
   --btn-bg: #4f46e5;
   --btn-hover: #4338ca;
-  --border-radius-base: 8px;
-  
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
+
+  --border-radius-base: 16px;
+
+  font-family:
+    "Inter",
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
 }
 
+/* =========================================================
+   GLOBAL
+   ========================================================= */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
   margin: 0;
   padding: 0;
-  background-color: #000;
-  overflow: hidden; /* Prevent scrolling when camera is active */
-  touch-action: none;
+
+  width: 100%;
+  height: 100%;
+
+  background-color: #000000;
+
+  overflow: hidden;
+
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
+#root,
 .App {
   width: 100vw;
-  height: 100vh;
+  height: 100dvh;
+
+  min-height: -webkit-fill-available;
+
   position: relative;
+
+  overflow: hidden;
 }
 
-/* Scanner Container */
+/* =========================================================
+   SCANNER CONTAINER
+   ========================================================= */
+
 .scanner-container {
   width: 100%;
-  height: 100%;
+  height: 100dvh;
+
+  min-height: -webkit-fill-available;
+
   position: relative;
+
   display: flex;
   flex-direction: column;
+
+  background-color: #000000;
+
+  overflow: hidden;
 }
 
-/* Video Layer */
+/* =========================================================
+   VIDEO
+   ========================================================= */
+
 .video-container {
   position: absolute;
-  top: 0;
-  left: 0;
+
+  inset: 0;
+
   width: 100%;
   height: 100%;
+
   z-index: 1;
+
+  overflow: hidden;
 }
 
 .scanner-video {
   width: 100%;
   height: 100%;
+
   object-fit: cover;
+
+  display: block;
 }
 
-/* Overlay Mask Layer */
-.scanner-overlay {
+/* =========================================================
+   TOP HEADER
+   ========================================================= */
+
+.scanner-header {
   position: absolute;
+
   top: 0;
   left: 0;
+  right: 0;
+
+  z-index: 100;
+
+  display: flex;
+  align-items: center;
+
+  padding:
+    max(env(safe-area-inset-top, 12px), 12px) 16px 12px;
+
+  background:
+    linear-gradient(180deg,
+      rgba(0, 0, 0, 0.75) 0%,
+      rgba(0, 0, 0, 0.4) 60%,
+      rgba(0, 0, 0, 0) 100%);
+
+  pointer-events: auto;
+}
+
+.header-back-btn {
+  background: transparent;
+
+  border: none;
+
+  color: #ffffff;
+
+  padding: 8px;
+
+  margin-right: 12px;
+
+  cursor: pointer;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 50%;
+
+  transition:
+    background-color 0.2s ease,
+    transform 0.15s ease;
+
+  flex-shrink: 0;
+}
+
+.header-back-btn:active {
+  background-color: rgba(255, 255, 255, 0.2);
+  transform: scale(0.96);
+}
+
+.header-content {
+  flex: 1;
+
+  text-align: center;
+
+  margin-right: 36px;
+
+  min-width: 0;
+}
+
+.header-title {
+  color: #ffffff;
+
+  font-size: clamp(1rem, 4.5vw, 1.125rem);
+
+  font-weight: 700;
+
+  margin: 0;
+
+  letter-spacing: -0.01em;
+
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+.header-subtitle {
+  color: rgba(255, 255, 255, 0.85);
+
+  font-size: clamp(0.75rem, 3.2vw, 0.8125rem);
+
+  font-weight: 400;
+
+  margin: 3px 0 0;
+
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+/* =========================================================
+   SCANNER OVERLAY
+   ========================================================= */
+
+.scanner-overlay {
+  position: absolute;
+
+  inset: 0;
+
   width: 100%;
   height: 100%;
-  z-index: 2;
-  display: flex;
-  flex-direction: column;
-  pointer-events: none; /* Let touches pass through to video/buttons if needed */
+
+  z-index: 10;
+
+  pointer-events: none;
+
+  overflow: hidden;
 }
 
-.overlay-top, .overlay-bottom {
-  flex: 1;
-  background-color: var(--overlay-bg);
-}
+/*
+  IMPORTANT:
+
+  The old implementation positioned the frame using
+  .overlay-top height.
+
+  That caused the rectangle to stick too close to the top.
+
+  New implementation:
+  - Frame is centered relative to the viewport.
+  - Then shifted slightly upward.
+  - Position remains responsive on every mobile height.
+*/
 
 .overlay-middle {
+  position: absolute;
+
+  inset: 0;
+
+  width: 100%;
+  height: 100%;
+
   display: flex;
-  /* Responsive height based on expected document aspect ratio (e.g. ID card is ~1.58 ratio) */
-  /* Using 30vh for height makes it responsive to portrait/landscape */
-  height: 35vh; 
-  min-height: 200px;
+
+  justify-content: center;
+  align-items: center;
+
+  /*
+    Move the frame slightly ABOVE the exact center.
+
+    7vh gives a natural "upper-middle" position
+    without sticking it to the top.
+  */
+  transform: translateY(-7dvh);
+
+  pointer-events: none;
 }
 
-.overlay-left, .overlay-right {
-  flex: 1;
-  background-color: var(--overlay-bg);
+/*
+  Keep these elements for compatibility if they already
+  exist in the DOM, but they no longer control frame position.
+*/
+
+.overlay-top {
+  display: none;
 }
+
+.overlay-bottom {
+  display: none;
+}
+
+/* =========================================================
+   DOCUMENT FRAME
+   ========================================================= */
 
 .overlay-cutout {
-  width: 85vw; /* Leaves margins on mobile */
-  max-width: 500px; /* Cap width on desktop/tablet */
   position: relative;
-  background: transparent;
-  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.2); /* Soft inner guide */
+
+  /*
+    Responsive width:
+    - Small phones: 86vw
+    - Normal phones: 88vw
+    - Large phones/tablets: max 420px
+  */
+  width: min(88vw, 420px);
+
+  /*
+    Standard ID-1 card ratio:
+    85.60 / 53.98 = 1.5858
+  */
+  aspect-ratio: 1.5858;
+
+  /*
+    Prevent frame from becoming too tall on short phones.
+  */
+  max-height: 42dvh;
+
   border-radius: var(--border-radius-base);
+
+  /*
+    Darken everything outside the scanner frame.
+  */
+  box-shadow:
+    0 0 0 9999px var(--overlay-bg);
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+
+  pointer-events: none;
+
+  flex-shrink: 0;
 }
 
-/* Frame Corners */
+/* =========================================================
+   FRAME CORNERS
+   ========================================================= */
+
 .corner {
   position: absolute;
+
   width: var(--frame-corner-size);
   height: var(--frame-corner-size);
+
   border: var(--frame-corner-width) solid var(--frame-border);
+
+  z-index: 2;
+
+  pointer-events: none;
 }
+
+/* Top Left */
 
 .top-left {
   top: -2px;
   left: -2px;
+
   border-bottom: 0;
   border-right: 0;
+
   border-top-left-radius: var(--border-radius-base);
 }
+
+/* Top Right */
 
 .top-right {
   top: -2px;
   right: -2px;
+
   border-bottom: 0;
   border-left: 0;
+
   border-top-right-radius: var(--border-radius-base);
 }
+
+/* Bottom Left */
 
 .bottom-left {
   bottom: -2px;
   left: -2px;
+
   border-top: 0;
   border-right: 0;
+
   border-bottom-left-radius: var(--border-radius-base);
 }
+
+/* Bottom Right */
 
 .bottom-right {
   bottom: -2px;
   right: -2px;
+
   border-top: 0;
   border-left: 0;
+
   border-bottom-right-radius: var(--border-radius-base);
 }
 
-/* HUD Layer */
+/* =========================================================
+   HUD / BOTTOM CONTROLS
+   ========================================================= */
+
 .scanner-hud {
-  position: fixed;
-  bottom: clamp(16px, 6vh, 48px);
+  position: absolute;
+
+  bottom: 0;
   left: 0;
   right: 0;
-  width: 100%;
-  z-index: 999;
+
+  z-index: 100;
+
   display: flex;
+
   flex-direction: column;
+
   align-items: center;
-  gap: 14px;
+
+  gap: clamp(8px, 1.8dvh, 16px);
+
+  padding:
+    16px 20px max(env(safe-area-inset-bottom, 24px), 24px);
+
+  background:
+    linear-gradient(0deg,
+      rgba(0, 0, 0, 0.88) 0%,
+      rgba(0, 0, 0, 0.45) 75%,
+      rgba(0, 0, 0, 0) 100%);
+
   pointer-events: auto;
-  padding-bottom: env(safe-area-inset-bottom, 12px);
+
+  box-sizing: border-box;
 }
 
-.hud-message {
-  color: var(--hud-text-color);
-  font-size: 1rem;
-  font-weight: 600;
-  text-align: center;
-  background: rgba(15, 23, 42, 0.85);
-  padding: 10px 22px;
-  border-radius: 30px;
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  max-width: 88vw;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-}
+/* =========================================================
+   HUD MESSAGE
+   ========================================================= */
 
-.hud-controls {
+.hud-message-pill {
   display: flex;
-  gap: 12px;
-  pointer-events: auto;
-  z-index: 1000;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+
+  color: #ffffff;
+
+  font-size: clamp(0.78rem, 3.5vw, 0.875rem);
+
+  font-weight: 500;
+
+  line-height: 1.35;
+
+  text-align: center;
+
+  background: rgba(20, 20, 24, 0.82);
+
+  padding: 10px 20px;
+
+  border-radius: 30px;
+
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
+  border: 1px solid rgba(255, 255, 255, 0.16);
+
+  max-width: 92vw;
+
+  box-shadow:
+    0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
-button {
-  padding: 14px 28px;
-  border: none;
-  border-radius: 30px;
-  font-size: 1rem;
+/* =========================================================
+   INFO ICON
+   ========================================================= */
+
+.hud-info-icon {
+  width: 18px;
+  height: 18px;
+
+  min-width: 18px;
+
+  border-radius: 50%;
+
+  border: 1.5px solid rgba(255, 255, 255, 0.7);
+
+  display: inline-flex;
+
+  align-items: center;
+  justify-content: center;
+
+  font-size: 11px;
+
   font-weight: 700;
+
+  flex-shrink: 0;
+
+  font-style: normal;
+}
+
+/* =========================================================
+   CONTROLS GROUP
+   ========================================================= */
+
+.hud-controls-group {
+  width: 100%;
+
+  max-width: 400px;
+
+  display: flex;
+
+  flex-direction: column;
+
+  align-items: center;
+
+  gap: 10px;
+}
+
+/* =========================================================
+   PRIMARY CAPTURE BUTTON
+   ========================================================= */
+
+.btn-primary-capture {
+  width: 100%;
+
+  min-height: 52px;
+  height: 52px;
+
+  background:
+    linear-gradient(135deg,
+      #5b5bf7 0%,
+      #4646e6 100%);
+
+  color: #ffffff;
+
+  border: none;
+
+  border-radius: 26px;
+
+  font-size: clamp(0.95rem, 4vw, 1.05rem);
+
+  font-weight: 700;
+
+  display: flex;
+
+  align-items: center;
+  justify-content: center;
+
+  gap: 10px;
+
   cursor: pointer;
-  transition: all 0.2s ease;
-  pointer-events: auto !important;
+
+  box-shadow:
+    0 6px 20px rgba(79, 70, 229, 0.45);
+
+  transition:
+    transform 0.15s ease,
+    background-color 0.2s ease;
+
   touch-action: manipulation;
+
   -webkit-tap-highlight-color: transparent;
 }
 
-.btn-primary {
-  background-color: var(--btn-bg);
-  color: white;
+.btn-primary-capture:active {
+  transform: scale(0.98);
 }
 
-.btn-primary:hover {
-  background-color: var(--btn-hover);
+.btn-primary-capture:hover {
+  background:
+    linear-gradient(135deg,
+      #6366f1 0%,
+      #4338ca 100%);
 }
 
-.btn-manual-capture {
-  background: linear-gradient(135deg, rgba(79, 70, 229, 0.9) 0%, rgba(99, 102, 241, 0.9) 100%);
-  color: white;
-  border: 1px solid rgba(255, 255, 255, 0.3);
-  backdrop-filter: blur(8px);
-  box-shadow: 0 4px 14px rgba(79, 70, 229, 0.5);
-  min-height: 48px;
+/* =========================================================
+   SECONDARY BUTTON
+   ========================================================= */
+
+.btn-secondary-link {
+  background: transparent;
+
+  border: none;
+
+  color: #6366f1;
+
+  font-size: clamp(0.875rem, 3.8vw, 0.95rem);
+
+  font-weight: 600;
+
+  padding: 8px 16px;
+
+  cursor: pointer;
+
+  transition: opacity 0.2s ease;
+
+  touch-action: manipulation;
+
+  -webkit-tap-highlight-color: transparent;
 }
 
-.btn-manual-capture:hover {
-  background-color: rgba(255, 255, 255, 0.3);
+.btn-secondary-link:hover {
+  opacity: 0.85;
 }
 
-/* Accessibility Focus States */
-button:focus-visible {
-  outline: 3px solid white;
-  outline-offset: 2px;
+.btn-secondary-link:active {
+  opacity: 0.7;
+}
+
+/* =========================================================
+   SMALL MOBILE DEVICES
+   ========================================================= */
+
+@media (max-width: 380px) {
+
+  .scanner-header {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+
+  .header-content {
+    margin-right: 28px;
+  }
+
+  .header-title {
+    font-size: 0.98rem;
+  }
+
+  .header-subtitle {
+    font-size: 0.72rem;
+  }
+
+  .overlay-cutout {
+    width: 86vw;
+
+    max-height: 38dvh;
+  }
+
+  .corner {
+    width: 24px;
+    height: 24px;
+  }
+
+  .scanner-hud {
+    padding-left: 14px;
+    padding-right: 14px;
+
+    gap: 8px;
+  }
+
+  .hud-message-pill {
+    padding: 9px 14px;
+  }
+
+  .btn-primary-capture {
+    height: 50px;
+    min-height: 50px;
+
+    font-size: 0.95rem;
+  }
+}
+
+/* =========================================================
+   SHORT MOBILE VIEWPORTS
+   ========================================================= */
+
+@media (max-height: 700px) {
+
+  .overlay-middle {
+    /*
+      Slightly less upward movement on short phones.
+      Keeps frame away from the header.
+    */
+    transform: translateY(-4dvh);
+  }
+
+  .overlay-cutout {
+    width: min(84vw, 380px);
+
+    max-height: 39dvh;
+  }
+
+  .scanner-hud {
+    padding-top: 10px;
+
+    padding-bottom:
+      max(env(safe-area-inset-bottom, 14px), 14px);
+
+    gap: 7px;
+  }
+
+  .hud-message-pill {
+    padding: 8px 14px;
+  }
+
+  .btn-primary-capture {
+    height: 48px;
+    min-height: 48px;
+  }
+
+  .btn-secondary-link {
+    padding: 5px 12px;
+  }
+}
+
+/* =========================================================
+   VERY SHORT VIEWPORTS
+   ========================================================= */
+
+@media (max-height: 550px) {
+
+  .overlay-middle {
+    transform: translateY(-2dvh);
+  }
+
+  .overlay-cutout {
+    width: min(72vw, 340px);
+
+    max-height: 34dvh;
+  }
+
+  .corner {
+    width: 22px;
+    height: 22px;
+
+    border-width: 3px;
+  }
+
+  .scanner-hud {
+    padding-top: 6px;
+
+    padding-bottom:
+      max(env(safe-area-inset-bottom, 8px), 8px);
+
+    gap: 5px;
+  }
+
+  .hud-message-pill {
+    font-size: 0.75rem;
+
+    padding: 6px 12px;
+  }
+
+  .btn-primary-capture {
+    height: 42px;
+    min-height: 42px;
+
+    font-size: 0.88rem;
+  }
+
+  .btn-secondary-link {
+    font-size: 0.8rem;
+
+    padding: 3px 10px;
+  }
+}
+
+/* =========================================================
+   LANDSCAPE MOBILE
+   ========================================================= */
+
+@media (orientation: landscape) and (max-height: 600px) {
+
+  .overlay-middle {
+    transform: translateY(-1dvh);
+  }
+
+  .overlay-cutout {
+    width: min(55vw, 380px);
+
+    max-height: 55dvh;
+  }
+
+  .scanner-hud {
+    padding:
+      8px 16px max(env(safe-area-inset-bottom, 10px), 10px);
+
+    gap: 6px;
+  }
+
+  .hud-controls-group {
+    max-width: 340px;
+  }
+
+  .btn-primary-capture {
+    height: 44px;
+    min-height: 44px;
+  }
+}
+
+/* =========================================================
+   LARGE PHONES / TABLETS
+   ========================================================= */
+
+@media (min-width: 600px) {
+
+  .overlay-middle {
+    transform: translateY(-8dvh);
+  }
+
+  .overlay-cutout {
+    width: min(70vw, 460px);
+  }
+
+  .scanner-hud {
+    padding-left: 32px;
+    padding-right: 32px;
+  }
+}
+
+/* =========================================================
+   SAFE AREA SUPPORT
+   ========================================================= */
+
+@supports (padding: max(0px)) {
+
+  .scanner-header {
+    padding-top:
+      max(env(safe-area-inset-top), 12px);
+  }
+
+  .scanner-hud {
+    padding-bottom:
+      max(env(safe-area-inset-bottom), 24px);
+  }
+}
+
+/* =========================================================
+   REDUCED MOTION
+   ========================================================= */
+
+@media (prefers-reduced-motion: reduce) {
+
+  .header-back-btn,
+  .btn-primary-capture,
+  .btn-secondary-link,
+  .overlay-cutout {
+    transition: none;
+  }
 }

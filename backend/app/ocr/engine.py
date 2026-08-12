@@ -1,80 +1,95 @@
-import httpx
 import numpy as np
 import cv2
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-class OCREngineClient:
+class RapidOCREngine:
+    """
+    Production-grade RapidOCR Engine (ONNX CPU Runtime).
+    Loaded ONCE at application startup and reused across requests for maximum throughput.
+    """
     def __init__(self):
-        self.base_url = "http://scanner-ocr:8001"
-        self.timeout = settings.api_timeout_seconds
-        self.local_engine = None
+        self._engine: Optional[Any] = None
+        self._initialized: bool = False
 
-    def _init_local_engine(self):
-        if self.local_engine is None:
-            try:
-                from rapidocr_onnxruntime import RapidOCR
-                logger.info("Initializing local RapidOCR (ONNX engine)...")
-                self.local_engine = RapidOCR()
-                logger.info("Local RapidOCR engine ready!")
-            except Exception as e:
-                logger.error(f"Failed to initialize local RapidOCR: {e}")
+    def initialize(self) -> bool:
+        """
+        Instantiates RapidOCR model ONCE and executes a warm-up inference pass.
+        """
+        if self._initialized and self._engine is not None:
+            return True
+
+        try:
+            logger.info("Initializing RapidOCR ONNX model...")
+            from rapidocr_onnxruntime import RapidOCR
+            self._engine = RapidOCR()
+
+            # Execute Warm-Up Inference Pass
+            dummy_img = np.zeros((300, 500, 3), dtype=np.uint8)
+            cv2.putText(dummy_img, "WARMUP TEST 123", (30, 150), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+            _ = self._engine(dummy_img)
+
+            self._initialized = True
+            logger.info("RapidOCR model initialized and warmed up successfully!")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to initialize RapidOCR model: {e}")
+            self._initialized = False
+            return False
 
     def is_ready(self) -> bool:
-        # Check HTTP microservice worker first
-        try:
-            response = httpx.get(f"{self.base_url}/ready", timeout=2.0)
-            if response.status_code == 200:
-                return True
-        except httpx.RequestError:
-            pass
+        if not self._initialized or self._engine is None:
+            return self.initialize()
+        return self._initialized
 
-        # Fallback to native RapidOCR ONNX engine
-        self._init_local_engine()
-        return self.local_engine is not None
+    def optimize_image_dimensions(self, img: np.ndarray) -> np.ndarray:
+        """
+        Resizes unnecessarily huge high-resolution mobile camera uploads 
+        to max_image_dimension while preserving exact aspect ratio.
+        """
+        h, w = img.shape[:2]
+        max_dim = settings.max_image_dimension
+        if max(h, w) > max_dim:
+            scale = max_dim / float(max(h, w))
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            return cv2.resize(img, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        return img
 
     def process_image(self, img_array: np.ndarray, apply_adaptive_threshold: bool = False) -> List[Dict[str, Any]]:
         """
-        Processes image via HTTP microservice or native RapidOCR engine.
+        Executes OCR inference on input numpy image.
         """
+        if not self.is_ready() or self._engine is None:
+            raise RuntimeError("RapidOCR Engine is not initialized or ready")
+
+        # 1. Optimize dimensions if huge image
+        img = self.optimize_image_dimensions(img_array)
+
+        # 2. Apply preprocessing if second pass requested
         if apply_adaptive_threshold:
-            gray = cv2.cvtColor(img_array, cv2.COLOR_BGR2GRAY)
-            img_array = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
-            img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2BGR)
+            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+            thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 11, 2)
+            img = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
 
-        # 1. Try HTTP microservice if available
-        try:
-            success, buffer = cv2.imencode(".jpg", img_array)
-            if success:
-                files = {"file": ("image.jpg", buffer.tobytes(), "image/jpeg")}
-                data = {"adaptive_threshold": str(apply_adaptive_threshold).lower()}
-                response = httpx.post(f"{self.base_url}/scan", files=files, data=data, timeout=self.timeout)
-                if response.status_code == 200:
-                    return response.json().get("results", [])
-        except Exception:
-            pass
-
-        # 2. Fallback to local RapidOCR engine
-        self._init_local_engine()
-        if not self.local_engine:
-            raise RuntimeError("OCR Engine unavailable")
-
-        result, _ = self.local_engine(img_array)
-        results = []
+        # 3. RapidOCR Inference
+        result, _ = self._engine(img)
+        
+        parsed_results: List[Dict[str, Any]] = []
         if result:
             for item in result:
                 # item format: [bbox, text, confidence]
                 bbox, text, confidence = item
-                results.append({
-                    "text": text,
+                parsed_results.append({
+                    "text": str(text).strip(),
                     "confidence": float(confidence),
                     "bbox": [[float(p[0]), float(p[1])] for p in bbox]
                 })
 
-        return results
+        return parsed_results
 
-# Singleton instance for the API to use
-ocr_engine = OCREngineClient()
+# Singleton Instance initialized once across application lifecycle
+ocr_engine = RapidOCREngine()

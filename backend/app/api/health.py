@@ -5,14 +5,21 @@ router = APIRouter()
 
 @router.get("/health")
 def health_check():
-    """Verify that the API process is alive."""
-    return {"status": "ok"}
+    """Lightweight liveness check - returns instantly without running OCR."""
+    return {"status": "healthy"}
 
 @router.get("/ready")
 def ready_check(response: Response):
-    """Verify that the API is fully configured and the OCR model is loaded."""
+    """Readiness check - returns 200 OK only when RapidOCR model is initialized and warmed up."""
     if ocr_engine.is_ready():
-        return {"status": "ready"}
+        return {
+            "status": "ready",
+            "ocr_engine": "rapidocr"
+        }
     
     response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-    return {"status": "not_ready"}
+    return {
+        "status": "not_ready",
+        "ocr_engine": "rapidocr",
+        "message": "RapidOCR engine initializing or unavailable"
+    }
