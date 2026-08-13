@@ -268,6 +268,24 @@ export const ScannerContainer: React.FC = () => {
             width: '85%',
             textAlign: 'center'
           }}>
+            {/* Captured Image Preview inside the Card */}
+            {capturedImage && (
+              <div style={{ 
+                marginBottom: '20px', 
+                borderRadius: '12px', 
+                overflow: 'hidden', 
+                border: '1px solid rgba(255, 255, 255, 0.2)', 
+                width: '100%', 
+                maxHeight: '160px' 
+              }}>
+                <img 
+                  src={capturedImage} 
+                  alt="Captured Document being processed" 
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
+                />
+              </div>
+            )}
+
             {/* Animated Spinner with Pulsing Center */}
             <div style={{
               position: 'relative',
