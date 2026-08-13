@@ -36,7 +36,7 @@ class AadhaarExtractor(BaseExtractor):
 
         if best_candidate:
             return {
-                "document_type": "AADHAAR",
+                "document_type": "AADHAAR_CARD",
                 "identifier": best_candidate,
                 "confidence": highest_conf
             }
@@ -68,7 +68,7 @@ class PANExtractor(BaseExtractor):
 
         if best_candidate:
             return {
-                "document_type": "PAN",
+                "document_type": "PAN_CARD",
                 "identifier": best_candidate,
                 "confidence": highest_conf
             }
@@ -145,10 +145,11 @@ class ABHAExtractor(BaseExtractor):
         # Return whichever is found, prioritizing ABHA Number
         if best_number or best_address:
             return {
-                "document_type": "ABHA",
+                "document_type": "ABHA_NUMBER",
                 "identifier": best_number if best_number else best_address,
                 "abha_number": best_number,
                 "abha_address": best_address,
                 "confidence": min(c for c in [highest_number_conf, highest_address_conf] if c > 0)
             }
         return None
+

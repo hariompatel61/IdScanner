@@ -7,7 +7,7 @@ class ScanMetrics(BaseModel):
 
 class ScanResponse(BaseModel):
     success: bool = Field(..., description="True if document was successfully scanned & extracted with high confidence")
-    document_type: str = Field(..., description="Document type: aadhaar, pan, voter, abha, or unknown")
+    document_type: str = Field(..., description="Document type: aadhaar_card, pan_card, voter_id, abha_number, or unknown")
     identifier: Optional[str] = Field(None, description="Extracted primary ID number (for backward compatibility)")
     fields: Dict[str, Any] = Field(default_factory=dict, description="Dictionary of extracted document fields")
     confidence: float = Field(0.0, description="Extraction confidence score between 0.0 and 1.0")

@@ -31,7 +31,7 @@ def generate_sample_id_image() -> bytes:
 def send_single_scan_request(client: httpx.Client, image_bytes: bytes) -> Dict[str, Any]:
     start_t = time.time()
     files = {'image': ('test_pan.jpg', image_bytes, 'image/jpeg')}
-    data = {'document_type': 'pan'}
+    data = {'document_type': 'pan_card'}
 
     try:
         resp = client.post(API_URL, files=files, data=data, timeout=30.0)

@@ -18,12 +18,36 @@ logger = logging.getLogger(__name__)
 # Constants
 MAX_FILE_SIZE_BYTES = settings.max_image_size_mb * 1024 * 1024
 
-# Instantiated Extractor Registry
+# Instantiated Extractor Instances
+_aadhaar_ext = AadhaarExtractor()
+_pan_ext = PANExtractor()
+_voter_ext = VoterIDExtractor()
+_abha_ext = ABHAExtractor()
+
+# Extractor Registry mapping aliases to instances
 EXTRACTOR_MAP = {
-    "aadhaar": AadhaarExtractor(),
-    "pan": PANExtractor(),
-    "voter": VoterIDExtractor(),
-    "abha": ABHAExtractor()
+    "aadhaar": _aadhaar_ext,
+    "aadhaar_card": _aadhaar_ext,
+    "pan": _pan_ext,
+    "pan_card": _pan_ext,
+    "voter": _voter_ext,
+    "voter_id": _voter_ext,
+    "abha": _abha_ext,
+    "abha_card": _abha_ext,
+    "abha_number": _abha_ext,
+}
+
+# Standard Output Document Type Normalization Map
+DOC_TYPE_NORMAL_MAP = {
+    "aadhaar": "aadhaar_card",
+    "aadhaar_card": "aadhaar_card",
+    "pan": "pan_card",
+    "pan_card": "pan_card",
+    "voter": "voter_id",
+    "voter_id": "voter_id",
+    "abha": "abha_number",
+    "abha_card": "abha_number",
+    "abha_number": "abha_number",
 }
 
 def verify_api_token(authorization: Optional[str] = Header(None)):
@@ -78,7 +102,8 @@ async def scan_document(
     if target_doc_type and target_doc_type in EXTRACTOR_MAP:
         selected_extractors = [EXTRACTOR_MAP[target_doc_type]]
     else:
-        selected_extractors = list(EXTRACTOR_MAP.values())
+        # Deduplicate extractor instances if scanning all
+        selected_extractors = [_aadhaar_ext, _pan_ext, _voter_ext, _abha_ext]
 
     # 4. OCR Processing (Pass 1)
     raw_results = ocr_engine.process_image(img, apply_adaptive_threshold=False)
@@ -113,18 +138,18 @@ async def scan_document(
     # 6. Evaluation & Response Generation (Safe Logging: NO PII logged!)
     if best_doc_result and best_doc_conf >= settings.high_confidence_threshold:
         raw_doc_type = best_doc_result["document_type"].lower()
-        doc_type = "voter" if raw_doc_type == "voter_id" else raw_doc_type
+        doc_type = DOC_TYPE_NORMAL_MAP.get(raw_doc_type, raw_doc_type)
         identifier = best_doc_result["identifier"]
 
         # Build fields dictionary
         fields: Dict[str, Any] = {}
-        if doc_type == "aadhaar":
+        if doc_type == "aadhaar_card":
             fields["aadhaar_number"] = identifier
-        elif doc_type == "pan":
+        elif doc_type == "pan_card":
             fields["pan_number"] = identifier
-        elif doc_type == "voter":
+        elif doc_type == "voter_id":
             fields["voter_id"] = identifier
-        elif doc_type == "abha":
+        elif doc_type == "abha_number":
             if best_doc_result.get("abha_number"):
                 fields["abha_number"] = best_doc_result.get("abha_number")
             if best_doc_result.get("abha_address"):
@@ -143,6 +168,7 @@ async def scan_document(
             request_id=request_id,
             metrics=metrics
         )
+
     else:
         logger.warning(f"[{request_id}] Scan Low Confidence / Unrecognized | processing_time={processing_time_ms}ms")
         return ScanResponse(

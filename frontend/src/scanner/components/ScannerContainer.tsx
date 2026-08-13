@@ -9,7 +9,7 @@ import type { WorkerAnalysisResult } from '../types';
 export const ScannerContainer: React.FC = () => {
   const [state, setState] = useState<ScannerState>(ScannerState.INITIALIZING);
   const consecutiveStableRef = useRef(0);
-  
+
   const { startCamera, stopCamera, isActive, error, videoRef } = useCamera({
     idealWidth: 1280,
     idealHeight: 720,
@@ -43,7 +43,7 @@ export const ScannerContainer: React.FC = () => {
   const captureHighResFrame = useCallback(async () => {
     setState(ScannerState.CAPTURING);
     setApiError(null);
-    
+
     const video = videoRef.current;
     if (!video) {
       stopCamera();
@@ -89,7 +89,9 @@ export const ScannerContainer: React.FC = () => {
           }
 
           setExtractedData({
-            docType: data.document_type || 'Identity Card',
+            docType: data.document_type
+              .replace(/_/g, ' ')
+              .replace(/\b\w/g, c => c.toUpperCase()) || 'Identity Card',
             idNumber: data.identifier,
             confidence: data.confidence ? Math.round(data.confidence * 100) : null
           });
@@ -173,20 +175,20 @@ export const ScannerContainer: React.FC = () => {
   return (
     <div className="scanner-container">
       {/* Video Preview Layer */}
-      <VideoPreview 
-        videoRef={videoRef} 
-        isActive={isActive} 
+      <VideoPreview
+        videoRef={videoRef}
+        isActive={isActive}
         onWorkerResult={handleWorkerResult}
         fpsLimit={8}
         isCapturing={isCapturingOrProcessing}
       />
-      
+
       {/* Overlay Mask Layer */}
       {(isActive && !isCapturingOrProcessing) && <ScannerOverlay />}
-      
+
       {/* HUD Layer (Accessible Messaging & Controls) */}
-      <ScannerHUD 
-        state={state} 
+      <ScannerHUD
+        state={state}
         cameraError={error}
         onManualCapture={handleManualCapture}
         onRescan={handleRescan}
@@ -226,7 +228,7 @@ export const ScannerContainer: React.FC = () => {
             }}>
               ✓
             </div>
-            
+
             <h2 style={{ color: '#ffffff', margin: '0 0 8px', fontSize: '24px', fontWeight: '700' }}>
               Document Scanned!
             </h2>
@@ -274,7 +276,7 @@ export const ScannerContainer: React.FC = () => {
 
           {/* Action Buttons */}
           <div style={{ width: '100%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '24px', marginBottom: '12px' }}>
-            <button 
+            <button
               style={{
                 width: '100%',
                 padding: '18px',
@@ -294,7 +296,7 @@ export const ScannerContainer: React.FC = () => {
               Submit Data to ERP
             </button>
 
-            <button 
+            <button
               style={{
                 width: '100%',
                 padding: '16px',
@@ -355,7 +357,7 @@ export const ScannerContainer: React.FC = () => {
               {apiError}
             </p>
 
-            <button 
+            <button
               style={{
                 width: '100%',
                 padding: '18px',
