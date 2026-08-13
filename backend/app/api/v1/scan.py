@@ -89,10 +89,12 @@ async def scan_document(
 
     # 2. In-Memory Image Decoding (Zero disk I/O)
     try:
+        if not content:
+            raise ValueError("Uploaded file is empty.")
         np_arr = np.frombuffer(content, np.uint8)
         img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        if img is None:
-            raise ValueError("Failed to decode image buffer.")
+        if img is None or img.size == 0:
+            raise ValueError("Failed to decode image buffer. Unsupported format.")
     except Exception as e:
         logger.error(f"Image decode error [{request_id}]: {e}")
         raise HTTPException(status_code=400, detail="Invalid image payload.")

@@ -316,3 +316,19 @@ OCR Processing	OpenCV numpy.ndarray (BGR)	RapidOCR (ONNX runtime)
 ## 📄 License & Attribution
 
 Distributed under the MIT License. Developed for high-performance identity document verification workflows.
+
+
+## ⚙️ Microservice Architecture: `ocr_worker`
+
+The `ocr_worker` directory contains an independent Python microservice that encapsulates the heavy AI processing workload (PaddleOCR) away from the main backend.
+
+### How it Works:
+1. **Model Warmup**: On startup (`lifespan` in `main.py`), it initializes the heavy `PaddleOCR` model in memory and performs a dummy scan to warm up the engine so the first real request is fast.
+2. **Dedicated API endpoint**: It runs its own FastAPI server (port 8001) exposing a `/scan` POST endpoint. 
+3. **In-Memory Decoding**: It receives binary image streams (`UploadFile`), decodes them using OpenCV, and optionally applies adaptive thresholding (`engine.py`) to clean up shadows before feeding the matrix to PaddleOCR.
+4. **Data Extraction**: It extracts text lines, bounding boxes, and confidence scores, and returns them as a clean JSON response.
+
+### How it is Used in the Project:
+- **Decoupling**: Currently, the main API backend handles both API requests and regex/parsing logic. The `ocr_worker` allows us to extract the OCR engine into a dedicated service.
+- **Horizontal Scalability**: PaddleOCR requires significant RAM and CPU/GPU. By decoupling it, you can run multiple instances (pods) of the `ocr_worker` on separate servers (or GPUs) while keeping the main backend lightweight.
+- **Integration**: The main backend (`backend/app/api/v1/scan.py`) will act as a gateway—receiving the image from the React frontend, sending it to the `ocr_worker` via an internal network request, and then parsing the returned text with regex extractors.

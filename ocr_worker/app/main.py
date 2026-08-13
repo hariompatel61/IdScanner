@@ -57,16 +57,28 @@ async def scan_image(
         
     try:
         contents = await file.read()
+        if not contents:
+            raise HTTPException(status_code=400, detail="Uploaded file is empty.")
+            
         nparr = np.frombuffer(contents, np.uint8)
         img_array = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
         
-        if img_array is None:
-            raise HTTPException(status_code=400, detail="Invalid image file")
+        if img_array is None or img_array.size == 0:
+            raise HTTPException(status_code=400, detail="Invalid image file or unsupported format.")
 
-        # Process the image
+        # Process the image with OCR Engine
         results = ocr_engine.process_image(img_array, apply_adaptive_threshold=adaptive_threshold)
         
-        return {"results": results}
+        # Apply Demographics Regex Extraction locally in the worker
+        from app.extractors import extract_demographics
+        demographics = extract_demographics(results)
+        
+        return {
+            "demographics": demographics,
+            "raw_results": results
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Error processing image in worker: {e}")
         raise HTTPException(status_code=500, detail=str(e))
