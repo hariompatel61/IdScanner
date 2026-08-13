@@ -822,3 +822,23 @@ body {
     transition: none;
   }
 }
+
+/* =========================================================
+   PROCESSING OVERLAY KEYFRAME ANIMATIONS
+   ========================================================= */
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; }
+  50% { transform: scale(1.1); opacity: 1; }
+}
+
+@keyframes scanBeam {
+  0% { left: -40%; }
+  50% { left: 100%; }
+  100% { left: -40%; }
+}

@@ -37,6 +37,7 @@ export const ScannerContainer: React.FC = () => {
     }
   }, [error]);
 
+  const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [extractedData, setExtractedData] = useState<{ docType: string; idNumber: string; confidence?: number | null } | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
 
@@ -63,9 +64,22 @@ export const ScannerContainer: React.FC = () => {
     }
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+    // 1. Immediately capture image data URL for instant frozen frame display
+    try {
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      setCapturedImage(dataUrl);
+    } catch (e) {
+      console.error("Failed to generate preview data URL:", e);
+    }
+
+    // 2. Immediately stop live camera stream so device camera turns off
+    stopCamera();
+
+    // 3. Immediately transition state to PROCESSING
     setState(ScannerState.PROCESSING);
 
-    // Convert frame to Blob and post to backend FastAPI /api/v1/scan
+    // 4. Convert frame to Blob and post to backend FastAPI /api/v1/scan
     canvas.toBlob(async (blob) => {
       try {
         if (!blob) throw new Error("Blob creation failed");
@@ -78,8 +92,6 @@ export const ScannerContainer: React.FC = () => {
           body: formData
         });
 
-        stopCamera();
-
         if (response.ok) {
           const data = await response.json();
           if (data.requires_rescan || !data.identifier) {
@@ -89,9 +101,10 @@ export const ScannerContainer: React.FC = () => {
           }
 
           setExtractedData({
-            docType: data.document_type
+            docType: (data.document_type || '')
               .replace(/_/g, ' ')
-              .replace(/\b\w/g, c => c.toUpperCase()) || 'Identity Card',
+              .replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Identity Card',
+
             idNumber: data.identifier,
             confidence: data.confidence ? Math.round(data.confidence * 100) : null
           });
@@ -104,7 +117,6 @@ export const ScannerContainer: React.FC = () => {
         }
       } catch (err: any) {
         console.error("API network error:", err);
-        stopCamera();
         setApiError("Network error contacting scan server. Please rescan.");
         setState(ScannerState.RESCAN_REQUIRED);
       }
@@ -164,6 +176,7 @@ export const ScannerContainer: React.FC = () => {
 
   const handleRescan = useCallback(() => {
     consecutiveStableRef.current = 0;
+    setCapturedImage(null);
     setExtractedData(null);
     setApiError(null);
     setState(ScannerState.INITIALIZING);
@@ -187,12 +200,152 @@ export const ScannerContainer: React.FC = () => {
       {(isActive && !isCapturingOrProcessing) && <ScannerOverlay />}
 
       {/* HUD Layer (Accessible Messaging & Controls) */}
-      <ScannerHUD
-        state={state}
-        cameraError={error}
-        onManualCapture={handleManualCapture}
-        onRescan={handleRescan}
-      />
+      {!isCapturingOrProcessing && state !== ScannerState.RESCAN_REQUIRED && (
+        <ScannerHUD
+          state={state}
+          cameraError={error}
+          onManualCapture={handleManualCapture}
+          onRescan={handleRescan}
+        />
+      )}
+
+      {/* Captured Frozen Image & Processing Loader Overlay */}
+      {(state === ScannerState.CAPTURING || state === ScannerState.PROCESSING) && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: '#0f172a',
+          zIndex: 99990,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          overflow: 'hidden'
+        }}>
+          {/* Frozen Captured Image Background with Dim & Blur Effect */}
+          {capturedImage && (
+            <img 
+              src={capturedImage} 
+              alt="Captured Document Preview" 
+              style={{
+                position: 'absolute',
+                width: '100%',
+                height: '100%',
+                objectFit: 'cover',
+                filter: 'brightness(0.4) blur(6px)',
+                transform: 'scale(1.05)'
+              }}
+            />
+          )}
+
+          {/* Dim Backdrop Overlay */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'radial-gradient(circle at center, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42, 0.85) 100%)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)'
+          }} />
+
+          {/* Animated Processing Card */}
+          <div style={{
+            position: 'relative',
+            zIndex: 10,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            padding: '32px 28px',
+            background: 'rgba(30, 41, 59, 0.85)',
+            border: '1px solid rgba(255, 255, 255, 0.12)',
+            borderRadius: '24px',
+            boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            maxWidth: '340px',
+            width: '85%',
+            textAlign: 'center'
+          }}>
+            {/* Animated Spinner with Pulsing Center */}
+            <div style={{
+              position: 'relative',
+              width: '72px',
+              height: '72px',
+              marginBottom: '20px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                borderRadius: '50%',
+                border: '3px solid rgba(99, 102, 241, 0.2)',
+                borderTopColor: '#6366f1',
+                borderRightColor: '#38bdf8',
+                animation: 'spin 1s linear infinite'
+              }} />
+              <div style={{
+                width: '40px',
+                height: '40px',
+                borderRadius: '50%',
+                background: 'linear-gradient(135deg, #6366f1 0%, #38bdf8 100%)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                boxShadow: '0 0 20px rgba(99, 102, 241, 0.6)',
+                animation: 'pulse 1.5s ease-in-out infinite'
+              }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 12h20M12 2v20M5 5l14 14M5 19L19 5" />
+                </svg>
+              </div>
+            </div>
+
+            <h3 style={{
+              color: '#f8fafc',
+              fontSize: '20px',
+              fontWeight: '700',
+              margin: '0 0 8px',
+              letterSpacing: '-0.01em'
+            }}>
+              Processing your document...
+            </h3>
+
+            <p style={{
+              color: '#94a3b8',
+              fontSize: '14px',
+              margin: 0,
+              lineHeight: '1.4'
+            }}>
+              Please wait while we verify the details.
+            </p>
+
+            {/* Scan Beam Bar */}
+            <div style={{
+              width: '100%',
+              height: '4px',
+              backgroundColor: 'rgba(255, 255, 255, 0.1)',
+              borderRadius: '2px',
+              marginTop: '20px',
+              overflow: 'hidden',
+              position: 'relative'
+            }}>
+              <div style={{
+                position: 'absolute',
+                height: '100%',
+                width: '40%',
+                background: 'linear-gradient(90deg, #6366f1, #38bdf8)',
+                borderRadius: '2px',
+                animation: 'scanBeam 1.5s ease-in-out infinite'
+              }} />
+            </div>
+          </div>
+        </div>
+      )}
+
 
       {/* Real OCR Result Screen - Mobile Optimized */}
       {state === ScannerState.SUCCESS && extractedData && (
@@ -233,7 +386,7 @@ export const ScannerContainer: React.FC = () => {
               Document Scanned!
             </h2>
             <p style={{ color: '#94a3b8', margin: '0 0 24px', fontSize: '14px' }}>
-              Extracted details verified by OCR
+              Details verified successfully
             </p>
 
             {/* Extracted Data Card */}
@@ -245,7 +398,9 @@ export const ScannerContainer: React.FC = () => {
               textAlign: 'left',
               boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
             }}>
+
               <div style={{ marginBottom: '16px' }}>
+
                 <span style={{ color: '#64748b', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
                   Document Type
                 </span>
