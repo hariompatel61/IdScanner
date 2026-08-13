@@ -52,10 +52,8 @@ export const ScannerContainer: React.FC = () => {
       return;
     }
 
-    // Capture full resolution frame from video stream
+    // Capture cropped frame from video stream
     const canvas = document.createElement('canvas');
-    canvas.width = video.videoWidth || 1280;
-    canvas.height = video.videoHeight || 720;
     const ctx = canvas.getContext('2d');
     if (!ctx) {
       stopCamera();
@@ -63,7 +61,48 @@ export const ScannerContainer: React.FC = () => {
       return;
     }
 
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const videoRect = video.getBoundingClientRect();
+    const cutoutEl = document.querySelector('.overlay-cutout');
+    const cutoutRect = cutoutEl ? cutoutEl.getBoundingClientRect() : null;
+
+    if (cutoutRect && videoRect && video.videoWidth && video.videoHeight) {
+      let scale, offsetX = 0, offsetY = 0;
+      
+      const vRatio = video.videoWidth / video.videoHeight;
+      const cRatio = videoRect.width / videoRect.height;
+      
+      if (vRatio > cRatio) {
+        // Video is wider than the container
+        scale = videoRect.height / video.videoHeight;
+        offsetX = (video.videoWidth * scale - videoRect.width) / 2;
+      } else {
+        // Video is taller than the container
+        scale = videoRect.width / video.videoWidth;
+        offsetY = (video.videoHeight * scale - videoRect.height) / 2;
+      }
+
+      const cutoutX = cutoutRect.left - videoRect.left;
+      const cutoutY = cutoutRect.top - videoRect.top;
+      
+      const sourceX = (cutoutX + offsetX) / scale;
+      const sourceY = (cutoutY + offsetY) / scale;
+      const sourceW = cutoutRect.width / scale;
+      const sourceH = cutoutRect.height / scale;
+
+      canvas.width = sourceW;
+      canvas.height = sourceH;
+      
+      ctx.drawImage(
+        video, 
+        sourceX, sourceY, sourceW, sourceH, // Source rectangle
+        0, 0, sourceW, sourceH // Destination rectangle
+      );
+    } else {
+      // Fallback if cutout is not found
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    }
 
     // 1. Immediately capture image data URL for instant frozen frame display
     try {
@@ -227,9 +266,9 @@ export const ScannerContainer: React.FC = () => {
         }}>
           {/* Frozen Captured Image Background with Dim & Blur Effect */}
           {capturedImage && (
-            <img 
-              src={capturedImage} 
-              alt="Captured Document Preview" 
+            <img
+              src={capturedImage}
+              alt="Captured Document Preview"
               style={{
                 position: 'absolute',
                 width: '100%',
@@ -270,18 +309,18 @@ export const ScannerContainer: React.FC = () => {
           }}>
             {/* Captured Image Preview inside the Card */}
             {capturedImage && (
-              <div style={{ 
-                marginBottom: '20px', 
-                borderRadius: '12px', 
-                overflow: 'hidden', 
-                border: '1px solid rgba(255, 255, 255, 0.2)', 
-                width: '100%', 
-                maxHeight: '160px' 
+              <div style={{
+                marginBottom: '20px',
+                borderRadius: '12px',
+                overflow: 'hidden',
+                border: '1px solid rgba(255, 255, 255, 0.2)',
+                width: '100%',
+                maxHeight: '160px'
               }}>
-                <img 
-                  src={capturedImage} 
-                  alt="Captured Document being processed" 
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
+                <img
+                  src={capturedImage}
+                  alt="Captured Document being processed"
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 />
               </div>
             )}
@@ -429,7 +468,7 @@ export const ScannerContainer: React.FC = () => {
 
               <div style={{ marginBottom: '12px' }}>
                 <span style={{ color: '#64748b', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
-                  Extracted Identifier
+                  Document Identifier
                 </span>
                 <span style={{ color: '#f8fafc', fontSize: '22px', fontWeight: '700', letterSpacing: '2px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
                   {extractedData.idNumber}
