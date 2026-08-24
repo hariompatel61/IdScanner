@@ -62,3 +62,70 @@ def test_abha_extractor():
     assert res is not None
     assert res["abha_number"] == "12-3456-7890-1234"
     assert res["abha_address"] == "john.doe@abdm"
+
+
+# ── Regression Tests ─────────────────────────────────────────────
+# These tests ensure the existing ID-number extraction logic is
+# BYTE-IDENTICAL after the structured field extraction changes.
+# If any of these fail, the existing extraction logic was modified
+# when it should have been left untouched.
+
+class TestExtractorRegression:
+    """Regression tests: existing extractor output must be byte-identical."""
+
+    def test_aadhaar_output_format_unchanged(self):
+        ext = AadhaarExtractor()
+        res = ext.extract([{"text": "9999 9999 9910", "confidence": 0.98}])
+        assert res is not None
+        # Exact keys and types must match original format
+        assert set(res.keys()) == {"document_type", "identifier", "confidence"}
+        assert res["document_type"] == "AADHAAR_CARD"
+        assert res["identifier"] == "999999999910"
+        assert isinstance(res["confidence"], float)
+
+    def test_pan_output_format_unchanged(self):
+        ext = PANExtractor()
+        res = ext.extract([{"text": "ABCDE1234F", "confidence": 0.99}])
+        assert res is not None
+        assert set(res.keys()) == {"document_type", "identifier", "confidence"}
+        assert res["document_type"] == "PAN_CARD"
+        assert res["identifier"] == "ABCDE1234F"
+        assert isinstance(res["confidence"], float)
+
+    def test_voter_output_format_unchanged(self):
+        ext = VoterIDExtractor()
+        res = ext.extract([{"text": "ABC1234567", "confidence": 0.97}])
+        assert res is not None
+        assert set(res.keys()) == {"document_type", "identifier", "confidence"}
+        assert res["document_type"] == "VOTER_ID"
+        assert res["identifier"] == "ABC1234567"
+
+    def test_abha_output_format_unchanged(self):
+        ext = ABHAExtractor()
+        res = ext.extract([
+            {"text": "12-3456-7890-1234", "confidence": 0.99},
+            {"text": "john.doe@abdm", "confidence": 0.95}
+        ])
+        assert res is not None
+        expected_keys = {"document_type", "identifier", "abha_number", "abha_address", "confidence"}
+        assert set(res.keys()) == expected_keys
+        assert res["document_type"] == "ABHA_NUMBER"
+        assert res["abha_number"] == "12-3456-7890-1234"
+        assert res["abha_address"] == "john.doe@abdm"
+
+    def test_aadhaar_no_match_returns_none(self):
+        ext = AadhaarExtractor()
+        res = ext.extract([{"text": "random text", "confidence": 0.50}])
+        assert res is None
+
+    def test_pan_no_match_returns_none(self):
+        ext = PANExtractor()
+        res = ext.extract([{"text": "random text", "confidence": 0.50}])
+        assert res is None
+
+    def test_verhoeff_validation_still_works(self):
+        """Confirm Verhoeff validation hasn't been accidentally modified."""
+        assert validate_verhoeff("999999999910") == True
+        assert validate_verhoeff("999999999918") == False
+        assert validate_verhoeff("abc") == False
+

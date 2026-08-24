@@ -45,7 +45,7 @@ def ready_check(response: Response):
     return {"status": "not_ready"}
 
 @app.post("/scan")
-async def scan_image(
+def scan_image(
     file: UploadFile = File(...),
     adaptive_threshold: bool = Form(False)
 ):
@@ -56,7 +56,7 @@ async def scan_image(
         )
         
     try:
-        contents = await file.read()
+        contents = file.file.read()
         if not contents:
             raise HTTPException(status_code=400, detail="Uploaded file is empty.")
             

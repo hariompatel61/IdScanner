@@ -11,7 +11,7 @@ from typing import List, Dict, Any
 API_URL = "http://127.0.0.1:4500/api/v1/scan"
 
 def generate_sample_id_image() -> bytes:
-    """Generates a synthetic PAN card image in memory for benchmark testing."""
+    """Generates a synthetic PAN card image with full field data for benchmark testing."""
     img = np.ones((600, 950, 3), dtype=np.uint8) * 240
     cv2.rectangle(img, (20, 20), (930, 580), (200, 220, 240), -1)
     cv2.rectangle(img, (20, 20), (930, 580), (100, 100, 100), 3)
@@ -19,9 +19,12 @@ def generate_sample_id_image() -> bytes:
     cv2.putText(img, "GOVT. OF INDIA", (330, 120), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 120), 2)
     cv2.putText(img, "Permanent Account Number", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 50), 2)
     cv2.putText(img, "ABCDE1234F", (50, 250), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (0, 0, 0), 3)
-    cv2.putText(img, "Name: TEST USER", (50, 320), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 50), 2)
-    cv2.putText(img, "Father's Name: TEST FATHER", (50, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 50), 2)
-    cv2.putText(img, "Date of Birth: 01/01/1990", (50, 440), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 50, 50), 2)
+    cv2.putText(img, "Name", (50, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
+    cv2.putText(img, "TEST USER", (50, 330), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
+    cv2.putText(img, "Father's Name", (50, 370), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
+    cv2.putText(img, "TEST FATHER", (50, 410), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
+    cv2.putText(img, "Date of Birth", (50, 450), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (100, 100, 100), 1)
+    cv2.putText(img, "01/01/1990", (50, 490), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
     
     success, buffer = cv2.imencode(".jpg", img)
     if not success:
@@ -37,7 +40,10 @@ def send_single_scan_request(client: httpx.Client, image_bytes: bytes) -> Dict[s
         resp = client.post(API_URL, files=files, data=data, timeout=30.0)
         elapsed_ms = (time.time() - start_t) * 1000.0
         if resp.status_code == 200:
-            return {"success": True, "latency_ms": elapsed_ms, "status": resp.status_code, "resp": resp.json()}
+            body = resp.json()
+            # Validate new details key is present
+            has_details = body.get("details") is not None if body.get("success") else True
+            return {"success": True, "latency_ms": elapsed_ms, "status": resp.status_code, "resp": body, "has_details": has_details}
         else:
             return {"success": False, "latency_ms": elapsed_ms, "status": resp.status_code, "resp": None}
     except Exception as e:

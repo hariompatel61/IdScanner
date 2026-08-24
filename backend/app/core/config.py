@@ -10,9 +10,11 @@ class Settings(BaseSettings):
     max_image_dimension: int = 960  # Optimized resolution bound for 150ms OCR latency
     ocr_device: str = "cpu"
     ocr_workers: int = 4
-    high_confidence_threshold: float = 0.85
+    high_confidence_threshold: float = 0.80
     retry_threshold: float = 0.70
     api_timeout_seconds: int = 30
+    field_confidence_threshold: float = 0.60  # Per-field low-confidence cutoff for structured extraction
+    line_merge_y_tolerance: int = 15  # Pixel tolerance for grouping OCR boxes into horizontal bands
     
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 

@@ -26,7 +26,7 @@ def test_not_ready_check(monkeypatch):
 
 
 def test_scan_invalid_file_type():
-    files = {'image': ('test.txt', b'fake data', 'text/plain')}
+    files = {'file': ('test.txt', b'fake data', 'text/plain')}
     response = client.post("/api/v1/scan", files=files)
     assert response.status_code == 415
     assert response.json()["detail"] == "Unsupported media type. Use JPEG, PNG, or WEBP."

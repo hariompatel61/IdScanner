@@ -3,12 +3,14 @@ import { useCamera } from '../hooks/useCamera';
 import { VideoPreview } from './VideoPreview';
 import { ScannerOverlay } from './ScannerOverlay';
 import { ScannerHUD } from './ScannerHUD';
+import { ScanResultCard } from './ScanResultCard';
 import { ScannerState } from '../types';
-import type { WorkerAnalysisResult } from '../types';
+import type { WorkerAnalysisResult, ScanApiResponse } from '../types';
 
 export const ScannerContainer: React.FC = () => {
   const [state, setState] = useState<ScannerState>(ScannerState.INITIALIZING);
   const consecutiveStableRef = useRef(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { startCamera, stopCamera, isActive, error, videoRef } = useCamera({
     idealWidth: 1280,
@@ -38,8 +40,47 @@ export const ScannerContainer: React.FC = () => {
   }, [error]);
 
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const [extractedData, setExtractedData] = useState<{ docType: string; idNumber: string; confidence?: number | null } | null>(null);
+  const [scanResponse, setScanResponse] = useState<ScanApiResponse | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+
+  const sendImageToBackend = useCallback(async (blobOrFile: Blob, previewUrl?: string) => {
+    if (previewUrl) {
+      setCapturedImage(previewUrl);
+    }
+    stopCamera();
+    setState(ScannerState.PROCESSING);
+    setApiError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', blobOrFile, 'document.jpg');
+
+      const response = await fetch('/api/v1/scan', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (response.ok) {
+        const data: ScanApiResponse = await response.json();
+        if (data.requires_rescan || !data.identifier) {
+          setApiError("Low OCR confidence or unreadable document. Please ensure all 4 corners are visible and rescan.");
+          setState(ScannerState.RESCAN_REQUIRED);
+          return;
+        }
+
+        setScanResponse(data);
+        setState(ScannerState.SUCCESS);
+      } else {
+        const errData = await response.json().catch(() => ({}));
+        setApiError(errData.detail || "Scan processing failed. Please rescan with clear lighting.");
+        setState(ScannerState.RESCAN_REQUIRED);
+      }
+    } catch (err: any) {
+      console.error("API scan error:", err);
+      setApiError("Unable to reach scanner service. Please verify your connection.");
+      setState(ScannerState.RESCAN_REQUIRED);
+    }
+  }, [stopCamera]);
 
   const captureHighResFrame = useCallback(async () => {
     setState(ScannerState.CAPTURING);
@@ -52,7 +93,6 @@ export const ScannerContainer: React.FC = () => {
       return;
     }
 
-    // Capture cropped frame from video stream
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) {
@@ -72,11 +112,9 @@ export const ScannerContainer: React.FC = () => {
       const cRatio = videoRect.width / videoRect.height;
       
       if (vRatio > cRatio) {
-        // Video is wider than the container
         scale = videoRect.height / video.videoHeight;
         offsetX = (video.videoWidth * scale - videoRect.width) / 2;
       } else {
-        // Video is taller than the container
         scale = videoRect.width / video.videoWidth;
         offsetY = (video.videoHeight * scale - videoRect.height) / 2;
       }
@@ -94,79 +132,48 @@ export const ScannerContainer: React.FC = () => {
       
       ctx.drawImage(
         video, 
-        sourceX, sourceY, sourceW, sourceH, // Source rectangle
-        0, 0, sourceW, sourceH // Destination rectangle
+        sourceX, sourceY, sourceW, sourceH,
+        0, 0, sourceW, sourceH
       );
     } else {
-      // Fallback if cutout is not found
       canvas.width = video.videoWidth || 1280;
       canvas.height = video.videoHeight || 720;
       ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     }
 
-    // 1. Immediately capture image data URL for instant frozen frame display
     try {
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
       setCapturedImage(dataUrl);
     } catch (e) {
-      console.error("Failed to generate preview data URL:", e);
+      console.error("Preview snapshot error:", e);
     }
 
-    // 2. Immediately stop live camera stream so device camera turns off
-    stopCamera();
-
-    // 3. Immediately transition state to PROCESSING
-    setState(ScannerState.PROCESSING);
-
-    // 4. Convert frame to Blob and post to backend FastAPI /api/v1/scan
-    canvas.toBlob(async (blob) => {
-      try {
-        if (!blob) throw new Error("Blob creation failed");
-
-        const formData = new FormData();
-        formData.append('file', blob, 'capture.jpg');
-
-        const response = await fetch('/api/v1/scan', {
-          method: 'POST',
-          body: formData
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          if (data.requires_rescan || !data.identifier) {
-            setApiError("Low OCR confidence or unreadable document. Please align the document clearly and rescan.");
-            setState(ScannerState.RESCAN_REQUIRED);
-            return;
-          }
-
-          setExtractedData({
-            docType: (data.document_type || '')
-              .replace(/_/g, ' ')
-              .replace(/\b\w/g, (c: string) => c.toUpperCase()) || 'Identity Card',
-
-            idNumber: data.identifier,
-            confidence: data.confidence ? Math.round(data.confidence * 100) : null
-          });
-          setState(ScannerState.SUCCESS);
-        } else {
-          const errData = await response.json().catch(() => ({}));
-          console.error("API post error:", response.status, errData);
-          setApiError(errData.detail || "Scan failed. Please rescan document.");
-          setState(ScannerState.RESCAN_REQUIRED);
-        }
-      } catch (err: any) {
-        console.error("API network error:", err);
-        setApiError("Network error contacting scan server. Please rescan.");
-        setState(ScannerState.RESCAN_REQUIRED);
+    canvas.toBlob((blob) => {
+      if (blob) {
+        sendImageToBackend(blob);
       }
-    }, 'image/jpeg', 0.9);
-  }, [stopCamera, videoRef]);
+    }, 'image/jpeg', 0.92);
+  }, [stopCamera, videoRef, sendImageToBackend]);
 
-  // Debounce state to prevent text flickering
+  const handleFileUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const previewUrl = event.target?.result as string;
+      sendImageToBackend(file, previewUrl);
+    };
+    reader.readAsDataURL(file);
+  }, [sendImageToBackend]);
+
+  const triggerFileUpload = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
   const lastStateChange = useRef<number>(Date.now());
 
   const handleWorkerResult = useCallback((result: WorkerAnalysisResult) => {
-    // Only process worker results if we are actively looking for a document
     if (
       state !== ScannerState.SEARCHING_DOCUMENT &&
       state !== ScannerState.DOCUMENT_DETECTED &&
@@ -175,12 +182,8 @@ export const ScannerContainer: React.FC = () => {
       return;
     }
 
-    if (result.reason === 'WORKER_INITIALIZING') {
-      return;
-    }
-
+    if (result.reason === 'WORKER_INITIALIZING') return;
     if (result.reason === 'CV_ERROR') {
-      console.error("CV Error occurred");
       setState(ScannerState.ERROR);
       return;
     }
@@ -201,7 +204,6 @@ export const ScannerContainer: React.FC = () => {
         lastStateChange.current = now;
       }
     } else {
-      // Only downgrade to searching if we haven't seen a doc for a bit
       if (state !== ScannerState.SEARCHING_DOCUMENT && timeSinceLastChange > 800) {
         setState(ScannerState.SEARCHING_DOCUMENT);
         lastStateChange.current = now;
@@ -216,8 +218,11 @@ export const ScannerContainer: React.FC = () => {
   const handleRescan = useCallback(() => {
     consecutiveStableRef.current = 0;
     setCapturedImage(null);
-    setExtractedData(null);
+    setScanResponse(null);
     setApiError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
     setState(ScannerState.INITIALIZING);
     startCamera();
   }, [startCamera]);
@@ -226,6 +231,15 @@ export const ScannerContainer: React.FC = () => {
 
   return (
     <div className="scanner-container">
+      {/* Hidden File Input for uploading local images */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileUpload}
+        accept="image/jpeg,image/png,image/webp,image/jpg"
+        style={{ display: 'none' }}
+      />
+
       {/* Video Preview Layer */}
       <VideoPreview
         videoRef={videoRef}
@@ -238,25 +252,23 @@ export const ScannerContainer: React.FC = () => {
       {/* Overlay Mask Layer */}
       {(isActive && !isCapturingOrProcessing) && <ScannerOverlay />}
 
-      {/* HUD Layer (Accessible Messaging & Controls) */}
+      {/* HUD Layer */}
       {!isCapturingOrProcessing && state !== ScannerState.RESCAN_REQUIRED && (
         <ScannerHUD
           state={state}
           cameraError={error}
           onManualCapture={handleManualCapture}
           onRescan={handleRescan}
+          onUploadFile={triggerFileUpload}
         />
       )}
 
-      {/* Captured Frozen Image & Processing Loader Overlay */}
+      {/* Captured Processing Overlay */}
       {(state === ScannerState.CAPTURING || state === ScannerState.PROCESSING) && (
         <div style={{
           position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: '#0f172a',
+          inset: 0,
+          backgroundColor: '#090d16',
           zIndex: 99990,
           display: 'flex',
           flexDirection: 'column',
@@ -264,32 +276,29 @@ export const ScannerContainer: React.FC = () => {
           justifyContent: 'center',
           overflow: 'hidden'
         }}>
-          {/* Frozen Captured Image Background with Dim & Blur Effect */}
           {capturedImage && (
             <img
               src={capturedImage}
-              alt="Captured Document Preview"
+              alt="Document Preview"
               style={{
                 position: 'absolute',
                 width: '100%',
                 height: '100%',
                 objectFit: 'cover',
-                filter: 'brightness(0.4) blur(6px)',
+                filter: 'brightness(0.35) blur(10px)',
                 transform: 'scale(1.05)'
               }}
             />
           )}
 
-          {/* Dim Backdrop Overlay */}
           <div style={{
             position: 'absolute',
             inset: 0,
-            background: 'radial-gradient(circle at center, rgba(15, 23, 42, 0.45) 0%, rgba(15, 23, 42, 0.85) 100%)',
+            background: 'radial-gradient(circle at center, rgba(15, 23, 42, 0.45) 0%, rgba(9, 13, 22, 0.9) 100%)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)'
           }} />
 
-          {/* Animated Processing Card */}
           <div style={{
             position: 'relative',
             zIndex: 10,
@@ -297,21 +306,20 @@ export const ScannerContainer: React.FC = () => {
             flexDirection: 'column',
             alignItems: 'center',
             padding: '32px 28px',
-            background: 'rgba(30, 41, 59, 0.85)',
+            background: 'rgba(30, 41, 59, 0.88)',
             border: '1px solid rgba(255, 255, 255, 0.12)',
             borderRadius: '24px',
             boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
-            maxWidth: '340px',
-            width: '85%',
+            maxWidth: '360px',
+            width: '88%',
             textAlign: 'center'
           }}>
-            {/* Captured Image Preview inside the Card */}
             {capturedImage && (
               <div style={{
                 marginBottom: '20px',
-                borderRadius: '12px',
+                borderRadius: '14px',
                 overflow: 'hidden',
                 border: '1px solid rgba(255, 255, 255, 0.2)',
                 width: '100%',
@@ -319,18 +327,17 @@ export const ScannerContainer: React.FC = () => {
               }}>
                 <img
                   src={capturedImage}
-                  alt="Captured Document being processed"
+                  alt="Processing Document"
                   style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 />
               </div>
             )}
 
-            {/* Animated Spinner with Pulsing Center */}
             <div style={{
               position: 'relative',
-              width: '72px',
-              height: '72px',
-              marginBottom: '20px',
+              width: '64px',
+              height: '64px',
+              marginBottom: '18px',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center'
@@ -345,42 +352,38 @@ export const ScannerContainer: React.FC = () => {
                 animation: 'spin 1s linear infinite'
               }} />
               <div style={{
-                width: '40px',
-                height: '40px',
+                width: '36px',
+                height: '36px',
                 borderRadius: '50%',
                 background: 'linear-gradient(135deg, #6366f1 0%, #38bdf8 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 0 20px rgba(99, 102, 241, 0.6)',
-                animation: 'pulse 1.5s ease-in-out infinite'
+                boxShadow: '0 0 20px rgba(99, 102, 241, 0.6)'
               }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ffffff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M2 12h20M12 2v20M5 5l14 14M5 19L19 5" />
-                </svg>
+                <span style={{ fontSize: '16px' }}>⚡</span>
               </div>
             </div>
 
             <h3 style={{
               color: '#f8fafc',
-              fontSize: '20px',
+              fontSize: '19px',
               fontWeight: '700',
-              margin: '0 0 8px',
+              margin: '0 0 6px',
               letterSpacing: '-0.01em'
             }}>
-              Processing your document...
+              Extracting Document Details...
             </h3>
 
             <p style={{
               color: '#94a3b8',
-              fontSize: '14px',
+              fontSize: '13px',
               margin: 0,
               lineHeight: '1.4'
             }}>
-              Please wait while we verify the details.
+              Recognizing Name, DOB, Gender & ID Number via On-Device OCR
             </p>
 
-            {/* Scan Beam Bar */}
             <div style={{
               width: '100%',
               height: '4px',
@@ -403,147 +406,27 @@ export const ScannerContainer: React.FC = () => {
         </div>
       )}
 
-
-      {/* Real OCR Result Screen - Mobile Optimized */}
-      {state === ScannerState.SUCCESS && extractedData && (
-        <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: '#0f172a',
-          zIndex: 99999,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          padding: '24px 20px',
-          boxSizing: 'border-box',
-          overflowY: 'auto'
-        }}>
-          <div style={{ width: '100%', maxWidth: '400px', textAlign: 'center', marginTop: '20px' }}>
-            <div style={{
-              width: '64px',
-              height: '64px',
-              borderRadius: '50%',
-              backgroundColor: 'rgba(16, 185, 129, 0.15)',
-              border: '2px solid #10b981',
-              color: '#10b981',
-              fontSize: '32px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              margin: '0 auto 16px'
-            }}>
-              ✓
-            </div>
-
-            <h2 style={{ color: '#ffffff', margin: '0 0 8px', fontSize: '24px', fontWeight: '700' }}>
-              Document Scanned!
-            </h2>
-            <p style={{ color: '#94a3b8', margin: '0 0 24px', fontSize: '14px' }}>
-              Details verified successfully
-            </p>
-
-            {/* Extracted Data Card */}
-            <div style={{
-              background: '#1e293b',
-              border: '1px solid #334155',
-              borderRadius: '16px',
-              padding: '20px',
-              textAlign: 'left',
-              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.5)'
-            }}>
-
-              <div style={{ marginBottom: '16px' }}>
-
-                <span style={{ color: '#64748b', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
-                  Document Type
-                </span>
-                <span style={{ color: '#38bdf8', fontSize: '18px', fontWeight: '600' }}>
-                  {extractedData.docType}
-                </span>
-              </div>
-
-              <div style={{ marginBottom: '12px' }}>
-                <span style={{ color: '#64748b', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '1px', fontWeight: '600', display: 'block', marginBottom: '4px' }}>
-                  Document Identifier
-                </span>
-                <span style={{ color: '#f8fafc', fontSize: '22px', fontWeight: '700', letterSpacing: '2px', fontFamily: 'monospace', wordBreak: 'break-all' }}>
-                  {extractedData.idNumber}
-                </span>
-              </div>
-
-              {extractedData.confidence !== undefined && extractedData.confidence !== null && (
-                <div style={{ marginTop: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: '#10b981' }}></div>
-                  <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '600' }}>
-                    {extractedData.confidence}% Verification Confidence
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Action Buttons */}
-          <div style={{ width: '100%', maxWidth: '400px', display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '24px', marginBottom: '12px' }}>
-            <button
-              style={{
-                width: '100%',
-                padding: '18px',
-                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '12px',
-                fontSize: '17px',
-                fontWeight: '700',
-                cursor: 'pointer',
-                boxShadow: '0 4px 14px 0 rgba(79, 70, 229, 0.4)'
-              }}
-              onClick={() => {
-                alert(`Submitting ${extractedData.idNumber} (${extractedData.docType}) to ERP system...`);
-              }}
-            >
-              Submit Data to ERP
-            </button>
-
-            <button
-              style={{
-                width: '100%',
-                padding: '16px',
-                background: 'transparent',
-                color: '#94a3b8',
-                border: '1px solid #334155',
-                borderRadius: '12px',
-                fontSize: '15px',
-                fontWeight: '600',
-                cursor: 'pointer'
-              }}
-              onClick={handleRescan}
-            >
-              Scan Another ID Card
-            </button>
-          </div>
-        </div>
+      {/* Real OCR Structured Data Display Screen */}
+      {state === ScannerState.SUCCESS && scanResponse && (
+        <ScanResultCard
+          data={scanResponse}
+          capturedImage={capturedImage}
+          onRescan={handleRescan}
+        />
       )}
 
       {/* Rescan Required / API Error Overlay */}
-      {state === ScannerState.RESCAN_REQUIRED && apiError && (
+      {state === ScannerState.RESCAN_REQUIRED && (
         <div style={{
           position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          backgroundColor: '#0f172a',
+          inset: 0,
+          backgroundColor: '#090d16',
           zIndex: 99999,
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          padding: '24px 20px',
-          boxSizing: 'border-box'
+          padding: '24px 20px'
         }}>
           <div style={{ width: '100%', maxWidth: '400px', textAlign: 'center' }}>
             <div style={{
@@ -566,25 +449,44 @@ export const ScannerContainer: React.FC = () => {
               Rescan Required
             </h2>
             <p style={{ color: '#94a3b8', margin: '0 0 24px', fontSize: '14px', lineHeight: '1.5' }}>
-              {apiError}
+              {apiError || 'Please align document within frame and ensure adequate lighting.'}
             </p>
 
-            <button
-              style={{
-                width: '100%',
-                padding: '18px',
-                background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
-                color: '#ffffff',
-                border: 'none',
-                borderRadius: '12px',
-                fontSize: '17px',
-                fontWeight: '700',
-                cursor: 'pointer'
-              }}
-              onClick={handleRescan}
-            >
-              Scan Again
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <button
+                style={{
+                  width: '100%',
+                  padding: '16px',
+                  background: 'linear-gradient(135deg, #6366f1 0%, #4f46e5 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '12px',
+                  fontSize: '16px',
+                  fontWeight: '700',
+                  cursor: 'pointer'
+                }}
+                onClick={handleRescan}
+              >
+                Scan Again with Camera
+              </button>
+
+              <button
+                style={{
+                  width: '100%',
+                  padding: '14px',
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  color: '#f8fafc',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  borderRadius: '12px',
+                  fontSize: '14px',
+                  fontWeight: '600',
+                  cursor: 'pointer'
+                }}
+                onClick={triggerFileUpload}
+              >
+                📁 Upload Image File
+              </button>
+            </div>
           </div>
         </div>
       )}

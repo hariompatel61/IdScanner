@@ -47,3 +47,25 @@ export interface WorkerAnalysisResult {
 }
 
 export type WorkerMessage = WorkerAnalyzePayload | WorkerAnalysisResult;
+
+export interface FieldResultData {
+  value: string;
+  confidence: number;
+  status: 'ok' | 'low_confidence' | 'not_found';
+}
+
+export interface ScanApiResponse {
+  success: boolean;
+  document_type: string;
+  identifier: string;
+  fields: Record<string, any>;
+  confidence?: number;
+  requires_rescan: boolean;
+  processing_time_ms: number;
+  request_id: string;
+  message?: string | null;
+  error_code?: string | null;
+  details?: Record<string, FieldResultData>;
+  overall_status: 'ok' | 'rescan_required';
+  failed_fields?: string[] | null;
+}

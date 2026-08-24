@@ -1,90 +1,116 @@
 import time
+import logging
 import uuid
+from typing import Dict, Any, Optional
+from fastapi import APIRouter, File, UploadFile, Query, HTTPException, Depends, Request
 import cv2
 import numpy as np
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Request, Depends, Header
-from fastapi.responses import JSONResponse
-from typing import Optional, Dict, Any
-import logging
 
 from app.core.config import settings
+from app.core.security import verify_api_token
+from app.core.scan_logger import scan_logger
 from app.ocr.engine import ocr_engine
-from app.extractors.regex import AadhaarExtractor, PANExtractor, VoterIDExtractor, ABHAExtractor
-from app.schemas.scan import ScanResponse, ScanMetrics
+from app.extractors.regex import (
+    AadhaarExtractor,
+    PANExtractor,
+    VoterIDExtractor,
+    ABHAExtractor,
+)
+from app.extractors.line_reconstructor import reconstruct_lines
+from app.parsers.aadhaar import AadhaarParser
+from app.parsers.pan import PANParser
+from app.parsers.voter_id import VoterIDParser
+from app.parsers.abha import ABHAParser
+from app.schemas.scan import ScanResponse, ScanMetrics, FieldResult
 
-router = APIRouter()
 logger = logging.getLogger(__name__)
 
-# Constants
+router = APIRouter()
+
+# Max payload bytes calculation: 5MB
 MAX_FILE_SIZE_BYTES = settings.max_image_size_mb * 1024 * 1024
 
-# Instantiated Extractor Instances
+# Instantiate Singleton Extractors
 _aadhaar_ext = AadhaarExtractor()
 _pan_ext = PANExtractor()
 _voter_ext = VoterIDExtractor()
 _abha_ext = ABHAExtractor()
 
-# Extractor Registry mapping aliases to instances
 EXTRACTOR_MAP = {
-    "aadhaar": _aadhaar_ext,
     "aadhaar_card": _aadhaar_ext,
-    "pan": _pan_ext,
+    "aadhaar": _aadhaar_ext,
     "pan_card": _pan_ext,
-    "voter": _voter_ext,
+    "pan": _pan_ext,
     "voter_id": _voter_ext,
-    "abha": _abha_ext,
-    "abha_card": _abha_ext,
+    "voter": _voter_ext,
     "abha_number": _abha_ext,
+    "abha": _abha_ext,
 }
 
-# Standard Output Document Type Normalization Map
+# Instantiate Singleton Document Parsers
+PARSER_MAP = {
+    "aadhaar_card": AadhaarParser(),
+    "aadhaar": AadhaarParser(),
+    "pan_card": PANParser(),
+    "pan": PANParser(),
+    "voter_id": VoterIDParser(),
+    "voter": VoterIDParser(),
+    "abha_number": ABHAParser(),
+    "abha": ABHAParser(),
+}
+
+# Document type canonical map
 DOC_TYPE_NORMAL_MAP = {
     "aadhaar": "aadhaar_card",
-    "aadhaar_card": "aadhaar_card",
     "pan": "pan_card",
-    "pan_card": "pan_card",
     "voter": "voter_id",
-    "voter_id": "voter_id",
+    "epic": "voter_id",
     "abha": "abha_number",
-    "abha_card": "abha_number",
-    "abha_number": "abha_number",
 }
 
-def verify_api_token(authorization: Optional[str] = Header(None)):
-    """
-    Validates Authorization: Bearer <API_TOKEN> if settings.api_token is configured.
-    """
-    if settings.api_token:
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Unauthorized. Missing Bearer token.")
-        token = authorization.split("Bearer ")[1].strip()
-        if token != settings.api_token:
-            raise HTTPException(status_code=401, detail="Unauthorized. Invalid Bearer token.")
 
-@router.post("/scan", response_model=ScanResponse, dependencies=[Depends(verify_api_token)])
+@router.get("/logs", summary="Get recent scan history logs")
+async def get_scan_logs(
+    limit: int = Query(default=50, ge=1, le=200, description="Max logs to return"),
+    auth: bool = Depends(verify_api_token),
+):
+    """
+    Returns the most recent scan logs (timestamp, document_type, identifier, fields, latency, confidence).
+    """
+    logs = scan_logger.get_recent_logs(limit=limit)
+    return {
+        "success": True,
+        "total": len(logs),
+        "logs": logs,
+    }
+
+
+@router.delete("/logs", summary="Clear scan history logs")
+async def clear_scan_logs(auth: bool = Depends(verify_api_token)):
+    """
+    Clears in-memory and persistent scan history logs.
+    """
+    scan_logger.clear_logs()
+    return {"success": True, "message": "Scan history cleared."}
+
+
+@router.post("/scan", response_model=ScanResponse, summary="Perform Document OCR and Field Extraction")
 async def scan_document(
     request: Request,
-    file: Optional[UploadFile] = File(None),
-    image: Optional[UploadFile] = File(None),
-    document_type: Optional[str] = Form(None)
+    file: UploadFile = File(..., description="Document image file (JPEG, PNG, WEBP)"),
+    document_type: Optional[str] = Query(None, description="Optional target document filter: aadhaar_card, pan_card, voter_id, abha_number"),
+    auth: bool = Depends(verify_api_token)
 ):
-    request_id = f"req_{uuid.uuid4().hex[:12]}"
     start_time = time.time()
-    
-    # Handle either 'file' or 'image' form field name
-    upload_file = file or image
-    if not upload_file:
-        raise HTTPException(status_code=400, detail="Missing image upload. Supply 'image' or 'file' field.")
-
-    if not ocr_engine.is_ready():
-        raise HTTPException(status_code=503, detail="OCR Engine is not ready or warming up.")
+    request_id = f"req_{uuid.uuid4().hex[:12]}"
+    client_ip = request.client.host if request.client else "127.0.0.1"
 
     # 1. Validate file payload limits
-    content = await upload_file.read()
+    content = await file.read()
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=413, detail=f"File too large. Max size is {settings.max_image_size_mb}MB.")
     
-    if upload_file.content_type and upload_file.content_type not in ["image/jpeg", "image/png", "image/webp"]:
+    if file.content_type and file.content_type not in ["image/jpeg", "image/png", "image/webp"]:
         raise HTTPException(status_code=415, detail="Unsupported media type. Use JPEG, PNG, or WEBP.")
 
     # 2. In-Memory Image Decoding (Zero disk I/O)
@@ -104,23 +130,24 @@ async def scan_document(
     if target_doc_type and target_doc_type in EXTRACTOR_MAP:
         selected_extractors = [EXTRACTOR_MAP[target_doc_type]]
     else:
-        # Deduplicate extractor instances if scanning all
         selected_extractors = [_aadhaar_ext, _pan_ext, _voter_ext, _abha_ext]
 
-    # 4. OCR Processing (Pass 1)
+    # 4. OCR Processing (Pass 1 - Fast Primary Pass)
     raw_results = ocr_engine.process_image(img, apply_adaptive_threshold=False)
     
     best_doc_result = None
     best_doc_conf = 0.0
+    best_raw_results = raw_results
 
     for ext in selected_extractors:
         res = ext.extract(raw_results)
         if res and res["confidence"] > best_doc_conf:
             best_doc_conf = res["confidence"]
             best_doc_result = res
+            best_raw_results = raw_results
 
-    # 5. OCR Processing (Pass 2 - Adaptive Threshold Fallback if confidence < threshold)
-    if not best_doc_result or best_doc_conf < settings.high_confidence_threshold:
+    # 5. OCR Processing (Pass 2 - Adaptive Threshold Fallback ONLY if no document found or confidence < retry_threshold)
+    if not best_doc_result or best_doc_conf < settings.retry_threshold:
         logger.info(f"[{request_id}] Pass 1 confidence low ({best_doc_conf:.2f}). Running Pass 2 (adaptive thresholding).")
         raw_results_pass2 = ocr_engine.process_image(img, apply_adaptive_threshold=True)
         
@@ -129,6 +156,7 @@ async def scan_document(
             if res and res["confidence"] > best_doc_conf:
                 best_doc_conf = res["confidence"]
                 best_doc_result = res
+                best_raw_results = raw_results_pass2
 
     processing_time_ms = int((time.time() - start_time) * 1000)
 
@@ -137,7 +165,7 @@ async def scan_document(
         request_id=request_id
     )
 
-    # 6. Evaluation & Response Generation (Safe Logging: NO PII logged!)
+    # 6. Evaluation & Response Generation
     if best_doc_result and best_doc_conf >= settings.high_confidence_threshold:
         raw_doc_type = best_doc_result["document_type"].lower()
         doc_type = DOC_TYPE_NORMAL_MAP.get(raw_doc_type, raw_doc_type)
@@ -157,7 +185,48 @@ async def scan_document(
             if best_doc_result.get("abha_address"):
                 fields["abha_address"] = best_doc_result.get("abha_address")
 
-        logger.info(f"[{request_id}] Success | doc_type={doc_type} | confidence={best_doc_conf:.2f} | processing_time={processing_time_ms}ms")
+        # Run structured field parser on the SAME OCR output
+        details = None
+        overall_status = "ok"
+        failed_fields = None
+
+        parser = PARSER_MAP.get(doc_type)
+        if parser:
+            try:
+                sorted_lines = reconstruct_lines(best_raw_results)
+                parsed = parser.extract_fields(sorted_lines)
+                details = {
+                    k: FieldResult(
+                        value=v.value,
+                        confidence=v.confidence,
+                        status=v.status,
+                    )
+                    for k, v in parsed.fields.items()
+                }
+                # Only add high-confidence OK fields to fields dictionary
+                for k, v in parsed.fields.items():
+                    if v.status == "ok" and v.value and k not in fields:
+                        fields[k] = v.value
+
+                overall_status = parsed.overall_status
+                failed_fields = parsed.failed_fields if parsed.failed_fields else None
+            except Exception as e:
+                logger.warning(f"[{request_id}] Field parser error for {doc_type}: {e}")
+                overall_status = "ok"
+
+        logger.info(f"[{request_id}] Success | doc_type={doc_type} | confidence={best_doc_conf:.2f} | overall_status={overall_status} | processing_time={processing_time_ms}ms")
+
+        # Persist Scan Log
+        scan_logger.log_scan(
+            request_id=request_id,
+            document_type=doc_type,
+            identifier=identifier,
+            fields=fields,
+            confidence=best_doc_conf,
+            processing_time_ms=processing_time_ms,
+            overall_status=overall_status,
+            client_ip=client_ip,
+        )
 
         return ScanResponse(
             success=True,
@@ -168,11 +237,29 @@ async def scan_document(
             requires_rescan=False,
             processing_time_ms=processing_time_ms,
             request_id=request_id,
-            metrics=metrics
+            metrics=metrics,
+            details=details,
+            overall_status=overall_status,
+            failed_fields=failed_fields,
         )
 
     else:
         logger.warning(f"[{request_id}] Scan Low Confidence / Unrecognized | processing_time={processing_time_ms}ms")
+        
+        # Persist Failed Scan Log
+        scan_logger.log_scan(
+            request_id=request_id,
+            document_type="unknown",
+            identifier=None,
+            fields={},
+            confidence=best_doc_conf,
+            processing_time_ms=processing_time_ms,
+            overall_status="rescan_required",
+            client_ip=client_ip,
+            error_code="LOW_CONFIDENCE",
+            message="Unable to confidently extract the document identifier.",
+        )
+
         return ScanResponse(
             success=False,
             document_type="unknown",
@@ -184,5 +271,6 @@ async def scan_document(
             request_id=request_id,
             error_code="LOW_CONFIDENCE",
             message="Unable to confidently extract the document identifier.",
-            metrics=metrics
+            metrics=metrics,
+            overall_status="rescan_required",
         )
