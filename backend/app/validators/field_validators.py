@@ -194,6 +194,37 @@ def validate_date(value: str) -> bool:
     return True
 
 
+def validate_expiry_date(value: str) -> bool:
+    """
+    Validates an expiry date string (allows future dates up to 30 years).
+    Accepts: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
+    """
+    if not value:
+        return False
+
+    normalized = value.strip().replace("-", "/").replace(".", "/")
+    match = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})$', normalized)
+    if not match:
+        return False
+
+    day, month, year = int(match.group(1)), int(match.group(2)), int(match.group(3))
+    current_year = datetime.now().year
+
+    if year < 1990 or year > current_year + 35:
+        return False
+    if month < 1 or month > 12:
+        return False
+    if day < 1 or day > 31:
+        return False
+
+    if month in (4, 6, 9, 11) and day > 30:
+        return False
+    if month == 2 and day > 29:
+        return False
+
+    return True
+
+
 def normalize_date(value: str) -> Optional[str]:
     """
     Normalizes a date string to DD/MM/YYYY format.
@@ -223,6 +254,28 @@ def normalize_date(value: str) -> Optional[str]:
     return None
 
 
+def normalize_expiry_date(value: str) -> Optional[str]:
+    """
+    Normalizes an expiry date string to DD/MM/YYYY format.
+    """
+    if not value:
+        return None
+
+    normalized = value.strip().replace("-", "/").replace(".", "/")
+    match = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})$', normalized)
+    if match:
+        day, month, year = int(match.group(1)), int(match.group(2)), match.group(3)
+        result = f"{day:02d}/{month:02d}/{year}"
+        if validate_expiry_date(result):
+            return result
+        return None
+    return None
+
+
+validate_dob = validate_date
+normalize_dob = normalize_date
+
+
 def extract_date_from_text(text: str) -> Optional[str]:
     """
     Searches any text string for a valid DD/MM/YYYY or DD-MM-YYYY pattern.
@@ -248,6 +301,7 @@ def extract_date_from_text(text: str) -> Optional[str]:
 def normalize_gender(value: str) -> Optional[str]:
     """
     Normalizes a gender string to canonical English: Male, Female, or Transgender.
+    Handles 'Sex: M', 'Gender: Female', 'fe/Gender.yyMale', single characters, and multi-lingual terms.
     """
     if not value:
         return None
@@ -256,25 +310,26 @@ def normalize_gender(value: str) -> Optional[str]:
     if cleaned in GENDER_MAP:
         return GENDER_MAP[cleaned]
 
-    # If line contains gender label (e.g. "fe/Gender.yyMale", "Gender: Male", "लिंग: पुरुष")
-    # inspect the portion after the label first
-    label_match = re.search(r'(?:gender|sex|लिंग|gander|gendar)\s*[:\.\/=\s\w]*', value, re.I)
-    search_target = value[label_match.end():] if label_match and label_match.end() < len(value) else value
+    # Explicit anchor match for single char or word following label
+    # e.g., "Sex: M", "Gender: F", "Sex / लिंग : M", "Gender : Male"
+    match = re.search(r'(?:gender|sex|लिंग|gander|gendar)[\s:\.\/=\-]+([A-Za-z]+|[\u0900-\u097F]+)', value, re.I)
+    if match:
+        val_part = match.group(1).lower().strip()
+        if val_part in GENDER_MAP:
+            return GENDER_MAP[val_part]
 
     # Check for Female / famale / transgender / male
-    if re.search(r'(?:female|famale|महिला|स्त्री)', search_target, re.I):
+    if re.search(r'(?:female|famale|महिला|स्त्री)', cleaned, re.I):
         return "Female"
-    if re.search(r'(?:transgender|किन्नर|तृतीयपंथी)', search_target, re.I):
+    if re.search(r'(?:transgender|किन्नर|तृतीयपंथी)', cleaned, re.I):
         return "Transgender"
-    if re.search(r'(?:male|malo|पुरुष|पुरूष)', search_target, re.I):
+    if re.search(r'(?:male|malo|पुरुष|पुरूष)', cleaned, re.I):
         return "Male"
 
-    # Fallback to full string with word boundaries
-    if re.search(r'\b(female|famale|महिला|स्त्री)\b', value, re.I):
+    # Fallback to single character M or F if standalone or separated
+    if re.search(r'\b[Ff]\b', cleaned):
         return "Female"
-    if re.search(r'\b(transgender|किन्नर|तृतीयपंथी)\b', value, re.I):
-        return "Transgender"
-    if re.search(r'\b(male|malo|पुरुष|पुरूष)\b', value, re.I):
+    if re.search(r'\b[Mm]\b', cleaned):
         return "Male"
 
     return None

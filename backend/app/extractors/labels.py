@@ -51,6 +51,23 @@ LABELS = {
         "abha address", "health id", "abha id", "abha address/ anr q"
     ],
 
+    # --- Passport specific ---
+    "given_name": [
+        "given name", "given names", "given name(s)", "first name", "दिया गया नाम"
+    ],
+    "surname": [
+        "surname", "last name", "family name", "उपनाम"
+    ],
+    "passport_no": [
+        "passport no", "passport number", "passport", "pass no", "passport #", "पासपोर्ट संख्या", "पासपोर्ट नं."
+    ],
+    "expiry_date": [
+        "date of expiry", "expiry date", "valid until", "valid upto", "expires on", "समाप्ति की तारीख"
+    ],
+    "nationality": [
+        "nationality", "citizenship", "country code", "राष्ट्रीयता"
+    ],
+
     # --- Headers ---
     "aadhaar_header": [
         "government of india", "भारत सरकार", "unique identification", "uidai", "आधार", "aadhaar"
@@ -64,6 +81,9 @@ LABELS = {
     ],
     "abha_header": [
         "ayushman bharat health account", "national health authority", "abha", "ayushman bharat", "आयुष्मान भारत"
+    ],
+    "passport_header": [
+        "passport", "republic of india", "पासपोर्ट", "भारत गणराज्य", "type p", "code ind"
     ],
 
     # --- Age ---

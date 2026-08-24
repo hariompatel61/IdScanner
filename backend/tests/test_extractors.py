@@ -1,5 +1,12 @@
 import pytest
-from app.extractors.regex import AadhaarExtractor, PANExtractor, VoterIDExtractor, ABHAExtractor
+from app.extractors.regex import (
+    AadhaarExtractor,
+    PANExtractor,
+    VoterIDExtractor,
+    ABHAExtractor,
+    FarmerIDExtractor,
+    PassportExtractor,
+)
 from app.extractors.verhoeff import validate_verhoeff
 
 def test_verhoeff_valid():
@@ -62,6 +69,37 @@ def test_abha_extractor():
     assert res is not None
     assert res["abha_number"] == "12-3456-7890-1234"
     assert res["abha_address"] == "john.doe@abdm"
+
+def test_farmer_id_extractor():
+    ext = FarmerIDExtractor()
+    res = ext.extract([
+        {"text": "Agri record", "confidence": 0.95},
+        {"text": "Farmer ID 195 36 94 77 21", "confidence": 0.98}
+    ])
+    assert res is not None
+    assert res["document_type"] == "FARMER_ID"
+    assert res["identifier"] == "195 36 94 77 21"
+
+def test_passport_extractor():
+    ext = PassportExtractor()
+    # 1. Standard VIZ format
+    res = ext.extract([
+        {"text": "REPUBLIC OF INDIA", "confidence": 0.95},
+        {"text": "PASSPORT", "confidence": 0.98},
+        {"text": "Passport No. Z1234567", "confidence": 0.96}
+    ])
+    assert res is not None
+    assert res["document_type"] == "PASSPORT"
+    assert res["identifier"] == "Z1234567"
+
+    # 2. MRZ Line 2 format
+    res_mrz = ext.extract([
+        {"text": "P<INDPATEL<<HARI<OM<<<<<<<<<<<<<<<<<<<<<<<<<", "confidence": 0.96},
+        {"text": "Z1234567<0IND0412285M3408151<<<<<<<<<<<<<<02", "confidence": 0.97}
+    ])
+    assert res_mrz is not None
+    assert res_mrz["document_type"] == "PASSPORT"
+    assert res_mrz["identifier"] == "Z1234567"
 
 
 # ── Regression Tests ─────────────────────────────────────────────

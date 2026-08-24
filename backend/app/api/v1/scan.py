@@ -15,12 +15,16 @@ from app.extractors.regex import (
     PANExtractor,
     VoterIDExtractor,
     ABHAExtractor,
+    FarmerIDExtractor,
+    PassportExtractor,
 )
 from app.extractors.line_reconstructor import reconstruct_lines
 from app.parsers.aadhaar import AadhaarParser
 from app.parsers.pan import PANParser
 from app.parsers.voter_id import VoterIDParser
 from app.parsers.abha import ABHAParser
+from app.parsers.farmer_id import FarmerIDParser
+from app.parsers.passport import PassportParser
 from app.schemas.scan import ScanResponse
 
 logger = logging.getLogger(__name__)
@@ -35,6 +39,8 @@ _aadhaar_ext = AadhaarExtractor()
 _pan_ext = PANExtractor()
 _voter_ext = VoterIDExtractor()
 _abha_ext = ABHAExtractor()
+_farmer_ext = FarmerIDExtractor()
+_passport_ext = PassportExtractor()
 
 EXTRACTOR_MAP = {
     "aadhaar_card": _aadhaar_ext,
@@ -45,6 +51,15 @@ EXTRACTOR_MAP = {
     "voter": _voter_ext,
     "abha_number": _abha_ext,
     "abha": _abha_ext,
+    "farmer_id": _farmer_ext,
+    "farmer": _farmer_ext,
+    "agriculture_card": _farmer_ext,
+    "agri": _farmer_ext,
+    "kisan_card": _farmer_ext,
+    "kisan": _farmer_ext,
+    "passport": _passport_ext,
+    "passports": _passport_ext,
+    "indian_passport": _passport_ext,
 }
 
 # Instantiate Singleton Document Parsers
@@ -57,6 +72,15 @@ PARSER_MAP = {
     "voter": VoterIDParser(),
     "abha_number": ABHAParser(),
     "abha": ABHAParser(),
+    "farmer_id": FarmerIDParser(),
+    "farmer": FarmerIDParser(),
+    "agriculture_card": FarmerIDParser(),
+    "agri": FarmerIDParser(),
+    "kisan_card": FarmerIDParser(),
+    "kisan": FarmerIDParser(),
+    "passport": PassportParser(),
+    "passports": PassportParser(),
+    "indian_passport": PassportParser(),
 }
 
 # Document type canonical map
@@ -66,6 +90,14 @@ DOC_TYPE_NORMAL_MAP = {
     "voter": "voter_id",
     "epic": "voter_id",
     "abha": "abha_number",
+    "farmer": "farmer_id",
+    "agri": "farmer_id",
+    "agriculture": "farmer_id",
+    "agriculture_card": "farmer_id",
+    "kisan": "farmer_id",
+    "kisan_card": "farmer_id",
+    "passports": "passport",
+    "indian_passport": "passport",
 }
 
 
@@ -130,7 +162,7 @@ async def scan_document(
     if target_doc_type and target_doc_type in EXTRACTOR_MAP:
         selected_extractors = [EXTRACTOR_MAP[target_doc_type]]
     else:
-        selected_extractors = [_aadhaar_ext, _pan_ext, _voter_ext, _abha_ext]
+        selected_extractors = [_aadhaar_ext, _pan_ext, _voter_ext, _abha_ext, _farmer_ext, _passport_ext]
 
     # 4. OCR Processing (Pass 1 - Fast Primary Pass)
     raw_results = ocr_engine.process_image(img, apply_adaptive_threshold=False)
@@ -174,6 +206,10 @@ async def scan_document(
             fields["pan_number"] = identifier
         elif doc_type == "voter_id":
             fields["voter_id"] = identifier
+        elif doc_type == "farmer_id":
+            fields["farmer_id"] = identifier
+        elif doc_type == "passport":
+            fields["passport_number"] = identifier
         elif doc_type == "abha_number":
             if best_doc_result.get("abha_number"):
                 fields["abha_number"] = best_doc_result.get("abha_number")

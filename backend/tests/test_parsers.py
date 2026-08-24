@@ -289,19 +289,97 @@ class TestABHAParser:
         assert result.fields["name"].value == "Hari Om Patel"
 
 
+from app.parsers.abha import ABHAParser
+from app.parsers.farmer_id import FarmerIDParser
+from app.parsers.passport import PassportParser
+
+
+# ── Farmer ID Parser Tests ──────────────────────────────────────
+
+class TestFarmerIDParser:
+    def setup_method(self):
+        self.parser = FarmerIDParser()
+
+    def test_full_extraction(self):
+        lines = [
+            _make_line("Agri record", 0.95, y_mid=20, line_index=0),
+            _make_line("नाम : प्रमोद कुमार", 0.90, y_mid=50, line_index=1),
+            _make_line("Pramod Kumar", 0.94, y_mid=75, line_index=2),
+            _make_line("DOB : 10/06/1991", 0.92, y_mid=100, line_index=3),
+            _make_line("Gender : Male", 0.96, y_mid=130, line_index=4),
+            _make_line("Mobile : 9027956097", 0.95, y_mid=160, line_index=5),
+            _make_line("Aadhaar : 527613815535", 0.94, y_mid=190, line_index=6),
+            _make_line("Farmer ID 195 36 94 77 21", 0.98, y_mid=230, line_index=7),
+        ]
+        result = self.parser.extract_fields(lines)
+
+        assert result.fields["name"].value == "Pramod Kumar"
+        assert result.fields["dob"].value == "10/06/1991"
+        assert result.fields["gender"].value == "Male"
+        assert result.fields["mobile"].value == "9027956097"
+        assert result.fields["aadhaar_number"].value == "527613815535"
+        assert result.overall_status == "ok"
+
+
+# ── Passport Parser Tests ───────────────────────────────────────
+
+class TestPassportParser:
+    def setup_method(self):
+        self.parser = PassportParser()
+
+    def test_viz_extraction(self):
+        lines = [
+            _make_line("PASSPORT", 0.98, y_mid=20, line_index=0),
+            _make_line("REPUBLIC OF INDIA", 0.95, y_mid=40, line_index=1),
+            _make_line("Passport No. Z1234567", 0.96, y_mid=70, line_index=2),
+            _make_line("Surname: PATEL", 0.94, y_mid=100, line_index=3),
+            _make_line("Given Name(s): HARI OM", 0.95, y_mid=130, line_index=4),
+            _make_line("Nationality: INDIAN", 0.96, y_mid=160, line_index=5),
+            _make_line("Sex: M", 0.95, y_mid=190, line_index=6),
+            _make_line("Date of Birth: 28/12/2004", 0.94, y_mid=220, line_index=7),
+            _make_line("Date of Expiry: 15/08/2034", 0.93, y_mid=250, line_index=8),
+        ]
+        result = self.parser.extract_fields(lines)
+
+        assert result.fields["name"].value == "HARI OM PATEL"
+        assert result.fields["surname"].value == "PATEL"
+        assert result.fields["given_name"].value == "HARI OM"
+        assert result.fields["gender"].value == "Male"
+        assert result.fields["dob"].value == "28/12/2004"
+        assert result.fields["expiry_date"].value == "15/08/2034"
+        assert result.fields["nationality"].value == "INDIAN"
+        assert result.overall_status == "ok"
+
+    def test_mrz_extraction(self):
+        lines = [
+            _make_line("P<INDPATEL<<HARI<OM<<<<<<<<<<<<<<<<<<<<<<<<<", 0.96, y_mid=400, line_index=0),
+            _make_line("Z1234567<0IND0412285M3408151<<<<<<<<<<<<<<02", 0.97, y_mid=430, line_index=1),
+        ]
+        result = self.parser.extract_fields(lines)
+
+        assert result.fields["name"].value == "HARI OM PATEL"
+        assert result.fields["surname"].value == "PATEL"
+        assert result.fields["given_name"].value == "HARI OM"
+        assert result.fields["gender"].value == "Male"
+        assert result.fields["dob"].value == "28/12/2004"
+        assert result.fields["expiry_date"].value == "15/08/2034"
+        assert result.fields["nationality"].value == "INDIAN"
+        assert result.overall_status == "ok"
+
+
 # ── Cross-Parser Tests ──────────────────────────────────────────
 
 class TestParserInterface:
     """Verify all parsers implement the same interface correctly."""
 
-    @pytest.mark.parametrize("parser_class", [AadhaarParser, PANParser, VoterIDParser, ABHAParser])
+    @pytest.mark.parametrize("parser_class", [AadhaarParser, PANParser, VoterIDParser, ABHAParser, FarmerIDParser, PassportParser])
     def test_empty_input_returns_rescan(self, parser_class):
         parser = parser_class()
         result = parser.extract_fields([])
         assert result.overall_status == "rescan_required"
         assert len(result.failed_fields) > 0
 
-    @pytest.mark.parametrize("parser_class", [AadhaarParser, PANParser, VoterIDParser, ABHAParser])
+    @pytest.mark.parametrize("parser_class", [AadhaarParser, PANParser, VoterIDParser, ABHAParser, FarmerIDParser, PassportParser])
     def test_has_mandatory_fields(self, parser_class):
         parser = parser_class()
         assert len(parser.MANDATORY_FIELDS) > 0

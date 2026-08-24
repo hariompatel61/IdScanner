@@ -35,17 +35,36 @@ const DOC_CONFIGS: Record<string, { label: string; badgeColor: string; bgGradien
     bgGradient: 'linear-gradient(135deg, rgba(16, 185, 129, 0.15) 0%, rgba(30, 41, 59, 0.95) 100%)',
     icon: '🏥',
     idLabel: 'ABHA Number'
+  },
+  farmer_id: {
+    label: 'Farmer ID / Agri Record',
+    badgeColor: '#22c55e',
+    bgGradient: 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(30, 41, 59, 0.95) 100%)',
+    icon: '🌾',
+    idLabel: 'Farmer ID'
+  },
+  passport: {
+    label: 'Passport',
+    badgeColor: '#0284c7',
+    bgGradient: 'linear-gradient(135deg, rgba(2, 132, 199, 0.15) 0%, rgba(30, 41, 59, 0.95) 100%)',
+    icon: '🛂',
+    idLabel: 'Passport Number'
   }
 };
 
 const FIELD_LABELS: Record<string, { label: string; icon: string }> = {
   name: { label: 'Full Name', icon: '👤' },
+  given_name: { label: 'Given Name(s)', icon: '👤' },
+  surname: { label: 'Surname', icon: '🏷️' },
   dob: { label: 'Date of Birth / Age', icon: '📅' },
   gender: { label: 'Gender', icon: '⚧' },
   father_name: { label: "Father's Name", icon: '👨' },
   relation_name: { label: "Relation Name", icon: '👥' },
   relation_type: { label: "Relation Type", icon: '🔗' },
   mobile: { label: 'Mobile Number', icon: '📱' },
+  aadhaar_number: { label: 'Aadhaar Number', icon: '🇮🇳' },
+  expiry_date: { label: 'Date of Expiry', icon: '⏳' },
+  nationality: { label: 'Nationality', icon: '🌐' },
   abha_address: { label: 'ABHA Address / Health ID', icon: '🏷️' }
 };
 
@@ -68,7 +87,7 @@ export const ScanResultCard: React.FC<ScanResultCardProps> = ({ data, capturedIm
   };
 
   // Filter fields from data.fields to display in grid (omitting primary id which is in the main box)
-  const primaryIdKeys = new Set(['aadhaar_number', 'pan_number', 'voter_id', 'abha_number']);
+  const primaryIdKeys = new Set(['aadhaar_number', 'pan_number', 'voter_id', 'abha_number', 'farmer_id', 'passport_number']);
   const entries = Object.entries(data.fields || {}).filter(([key, val]) => {
     if (!val || val === 'None') return false;
     if (primaryIdKeys.has(key)) return false;

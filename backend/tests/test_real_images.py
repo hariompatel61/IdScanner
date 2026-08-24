@@ -11,7 +11,7 @@ import cv2
 import pytest
 from app.ocr.engine import ocr_engine
 from app.extractors.line_reconstructor import reconstruct_lines
-from app.api.v1.scan import _aadhaar_ext, _pan_ext, _voter_ext, _abha_ext, PARSER_MAP, DOC_TYPE_NORMAL_MAP
+from app.api.v1.scan import _aadhaar_ext, _pan_ext, _voter_ext, _abha_ext, _farmer_ext, PARSER_MAP, DOC_TYPE_NORMAL_MAP
 
 TEST_IMAGE_DIR = r"C:\Users\Hariom_patel\Documents\IDScanner\test_image"
 
@@ -183,3 +183,26 @@ class TestRealImages:
         assert parsed.fields["name"].value == "Shubham Darekar"
         assert parsed.fields["relation_name"].value == "Nandini Darekar"
         assert parsed.fields["relation_type"].value == "Mother"
+
+    def test_farmer_id_card(self):
+        img_path = os.path.join(TEST_IMAGE_DIR, "farmer_id.jpg")
+        assert os.path.exists(img_path), f"File missing: {img_path}"
+
+        img = cv2.imread(img_path)
+        raw_results = ocr_engine.process_image(img)
+
+        ext_res = _farmer_ext.extract(raw_results)
+        assert ext_res is not None
+        assert ext_res["identifier"] == "195 36 94 77 21"
+
+        lines = reconstruct_lines(raw_results)
+        parser = PARSER_MAP["farmer_id"]
+        parsed = parser.extract_fields(lines)
+
+        assert parsed.overall_status == "ok"
+        assert parsed.fields["name"].value == "Pramod Kumar"
+        assert parsed.fields["dob"].value == "10/06/1991"
+        assert parsed.fields["gender"].value == "Male"
+        assert parsed.fields["mobile"].value == "9027956097"
+        assert parsed.fields["aadhaar_number"].value == "527613815535"
+

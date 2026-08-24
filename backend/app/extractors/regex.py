@@ -13,6 +13,11 @@ class AadhaarExtractor(BaseExtractor):
         self.pattern = re.compile(r'\b(\d{4})[\s\-]?[Oo0]?[\s\-]?(\d{4})[\s\-]?[Oo0]?[\s\-]?(\d{4})\b')
 
     def extract(self, ocr_results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        # If document has explicit Farmer ID / Agri record banner, Aadhaar is a secondary field
+        all_text = " ".join([l.get('text', '') for l in ocr_results])
+        if re.search(r'(agri\s*record|farmer\s*id|farmerid|kisan\s*id|kisan\s*card|agrirecord)', all_text, re.I):
+            return None
+
         best_candidate = None
         highest_conf = 0.0
 
@@ -152,4 +157,112 @@ class ABHAExtractor(BaseExtractor):
                 "confidence": min(c for c in [highest_number_conf, highest_address_conf] if c > 0)
             }
         return None
+
+class FarmerIDExtractor(BaseExtractor):
+    def __init__(self):
+        self.explicit_pattern = re.compile(
+            r'(?:Farmer\s*ID|FarmerID|Kisan\s*ID|Agri\s*ID)[\s:\-]*([0-9\s]{9,16})',
+            re.IGNORECASE
+        )
+        self.digits_pattern = re.compile(r'\b(\d{3})\s?(\d{2})\s?(\d{2})\s?(\d{2})\s?(\d{2})\b')
+
+    def extract(self, ocr_results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        best_candidate = None
+        highest_conf = 0.0
+        has_farmer_context = False
+
+        for line in ocr_results:
+            text = line.get('text', '')
+            conf = line.get('confidence', 0.0)
+
+            if re.search(r'(agri|farmer|kisan|record|कृषि|किसान)', text, re.I):
+                has_farmer_context = True
+
+            # 1. Check explicit label (e.g. Farmer ID 195 36 94 77 21)
+            match = self.explicit_pattern.search(text)
+            if match:
+                raw_digits = re.sub(r'[^\d]', '', match.group(1))
+                if len(raw_digits) == 11:
+                    formatted = f"{raw_digits[0:3]} {raw_digits[3:5]} {raw_digits[5:7]} {raw_digits[7:9]} {raw_digits[9:11]}"
+                    if conf > highest_conf:
+                        highest_conf = conf
+                        best_candidate = formatted
+
+            # 2. Check 11-digit pattern
+            d_match = self.digits_pattern.search(text)
+            if d_match:
+                raw_digits = "".join(d_match.groups())
+                if len(raw_digits) == 11:
+                    formatted = f"{raw_digits[0:3]} {raw_digits[3:5]} {raw_digits[5:7]} {raw_digits[7:9]} {raw_digits[9:11]}"
+                    if conf > highest_conf:
+                        highest_conf = conf
+                        best_candidate = formatted
+
+        if best_candidate and (has_farmer_context or highest_conf > 0.7):
+            return {
+                "document_type": "FARMER_ID",
+                "identifier": best_candidate,
+                "confidence": highest_conf
+            }
+        return None
+
+class PassportExtractor(BaseExtractor):
+    def __init__(self):
+        # Indian & standard ICAO passports: 1 letter + 7 digits (e.g. Z1234567) or 1-2 letters + 7 digits
+        self.passport_pattern = re.compile(r'\b([A-PR-WYZ][0-9]{7})\b', re.IGNORECASE)
+        self.mrz_line2_pattern = re.compile(r'\b([A-PR-WYZ0-9]{8,9})[<0-9][A-Z]{3}', re.IGNORECASE)
+        self.explicit_pattern = re.compile(
+            r'(?:Passport\s*(?:No|Number|#)?|पासपोर्ट\s*(?:नं|संख्या)?)[\s:\-]*([A-Z][0-9]{7,8})\b',
+            re.IGNORECASE
+        )
+
+    def extract(self, ocr_results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        best_candidate = None
+        highest_conf = 0.0
+        has_passport_context = False
+
+        # First check overall document context for passport indicators
+        all_text = " ".join([l.get('text', '') for l in ocr_results])
+        if re.search(r'(passport|republic\s*of\s*india|भारत\s*गणराज्य|पासपोर्ट|given\s*name|surname|nationality|type\s*p|p<ind|p<)', all_text, re.I):
+            has_passport_context = True
+
+        for line in ocr_results:
+            text = line.get('text', '')
+            conf = line.get('confidence', 0.0)
+
+            # 1. Explicit Anchor match
+            m_exp = self.explicit_pattern.search(text)
+            if m_exp:
+                cand = m_exp.group(1).upper()
+                if conf > highest_conf:
+                    highest_conf = conf
+                    best_candidate = cand
+
+            # 2. MRZ Line 2 extraction
+            m_mrz = self.mrz_line2_pattern.search(text)
+            if m_mrz:
+                cand = m_mrz.group(1).replace('<', '').upper()
+                if len(cand) == 8 and re.match(r'^[A-Z][0-9]{7}$', cand):
+                    if conf > highest_conf:
+                        highest_conf = conf
+                        best_candidate = cand
+
+            # 3. Standard 1 letter + 7 digits pattern
+            for match in self.passport_pattern.finditer(text):
+                cand = match.group(1).upper()
+                # Exclude common PAN prefixes or other collisions if no passport context
+                if has_passport_context or conf > 0.85:
+                    if conf > highest_conf:
+                        highest_conf = conf
+                        best_candidate = cand
+
+        if best_candidate and (has_passport_context or highest_conf > 0.8):
+            return {
+                "document_type": "PASSPORT",
+                "identifier": best_candidate,
+                "confidence": highest_conf
+            }
+        return None
+
+
 
