@@ -62,8 +62,8 @@ export const ScannerContainer: React.FC = () => {
 
       if (response.ok) {
         const data: ScanApiResponse = await response.json();
-        if (data.requires_rescan || !data.identifier) {
-          setApiError("Low OCR confidence or unreadable document. Please ensure all 4 corners are visible and rescan.");
+        if (!data.success || !data.identifier) {
+          setApiError(data.message || "Low OCR confidence or unreadable document. Please ensure all 4 corners are visible and rescan.");
           setState(ScannerState.RESCAN_REQUIRED);
           return;
         }

@@ -21,7 +21,7 @@ from app.parsers.aadhaar import AadhaarParser
 from app.parsers.pan import PANParser
 from app.parsers.voter_id import VoterIDParser
 from app.parsers.abha import ABHAParser
-from app.schemas.scan import ScanResponse, ScanMetrics, FieldResult
+from app.schemas.scan import ScanResponse
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +94,7 @@ async def clear_scan_logs(auth: bool = Depends(verify_api_token)):
     return {"success": True, "message": "Scan history cleared."}
 
 
-@router.post("/scan", response_model=ScanResponse, summary="Perform Document OCR and Field Extraction")
+@router.post("/scan", response_model=ScanResponse, response_model_exclude_none=True, summary="Perform Document OCR and Field Extraction")
 async def scan_document(
     request: Request,
     file: UploadFile = File(..., description="Document image file (JPEG, PNG, WEBP)"),
@@ -160,11 +160,6 @@ async def scan_document(
 
     processing_time_ms = int((time.time() - start_time) * 1000)
 
-    metrics = ScanMetrics(
-        processing_time_ms=processing_time_ms,
-        request_id=request_id
-    )
-
     # 6. Evaluation & Response Generation
     if best_doc_result and best_doc_conf >= settings.high_confidence_threshold:
         raw_doc_type = best_doc_result["document_type"].lower()
@@ -186,30 +181,17 @@ async def scan_document(
                 fields["abha_address"] = best_doc_result.get("abha_address")
 
         # Run structured field parser on the SAME OCR output
-        details = None
         overall_status = "ok"
-        failed_fields = None
-
         parser = PARSER_MAP.get(doc_type)
         if parser:
             try:
                 sorted_lines = reconstruct_lines(best_raw_results)
                 parsed = parser.extract_fields(sorted_lines)
-                details = {
-                    k: FieldResult(
-                        value=v.value,
-                        confidence=v.confidence,
-                        status=v.status,
-                    )
-                    for k, v in parsed.fields.items()
-                }
-                # Only add high-confidence OK fields to fields dictionary
                 for k, v in parsed.fields.items():
                     if v.status == "ok" and v.value and k not in fields:
                         fields[k] = v.value
 
                 overall_status = parsed.overall_status
-                failed_fields = parsed.failed_fields if parsed.failed_fields else None
             except Exception as e:
                 logger.warning(f"[{request_id}] Field parser error for {doc_type}: {e}")
                 overall_status = "ok"
@@ -233,14 +215,6 @@ async def scan_document(
             document_type=doc_type,
             identifier=identifier,
             fields=fields,
-            confidence=round(best_doc_conf, 4),
-            requires_rescan=False,
-            processing_time_ms=processing_time_ms,
-            request_id=request_id,
-            metrics=metrics,
-            details=details,
-            overall_status=overall_status,
-            failed_fields=failed_fields,
         )
 
     else:
@@ -265,12 +239,6 @@ async def scan_document(
             document_type="unknown",
             identifier=None,
             fields={},
-            confidence=round(best_doc_conf, 4),
-            requires_rescan=True,
-            processing_time_ms=processing_time_ms,
-            request_id=request_id,
             error_code="LOW_CONFIDENCE",
             message="Unable to confidently extract the document identifier.",
-            metrics=metrics,
-            overall_status="rescan_required",
         )

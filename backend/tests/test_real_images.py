@@ -163,3 +163,23 @@ class TestRealImages:
         assert parsed.fields["name"].value in ("ROHTASH KUMAR", "ROHTASHKUMAR")
         assert parsed.fields["relation_name"].value in ("GOPI RAM", "GOPIRAM")
         assert parsed.fields["gender"].value == "Male"
+
+    def test_voteriddd_card(self):
+        img_path = os.path.join(TEST_IMAGE_DIR, "VOTERIDDD.png")
+        assert os.path.exists(img_path), f"File missing: {img_path}"
+
+        img = cv2.imread(img_path)
+        raw_results = ocr_engine.process_image(img)
+
+        ext_res = _voter_ext.extract(raw_results)
+        assert ext_res is not None
+        assert ext_res["identifier"] == "RIW7626286"
+
+        lines = reconstruct_lines(raw_results)
+        parser = PARSER_MAP["voter_id"]
+        parsed = parser.extract_fields(lines)
+
+        assert parsed.overall_status == "ok"
+        assert parsed.fields["name"].value == "Shubham Darekar"
+        assert parsed.fields["relation_name"].value == "Nandini Darekar"
+        assert parsed.fields["relation_type"].value == "Mother"

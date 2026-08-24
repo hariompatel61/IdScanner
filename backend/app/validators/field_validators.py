@@ -46,18 +46,18 @@ PRIMARY_SURNAMES = [
 
 def is_pure_label_line(text: str) -> bool:
     """
-    Returns True if the text is purely an anchor/label line (like 'Name', 'Father\'s Name', 'Mother\'s Name').
+    Returns True if the text is purely an anchor/label line (like 'Name', 'Father\'s Name', 'Mother\'s Name', 'Mothersp').
     """
     if not text:
         return True
 
     cleaned = re.sub(r'^[^\w\s]+', '', text.strip())
-    if re.search(r'^(?:[a-zA-Z\u0900-\u097F]{1,5}[\/\-:\.]\s*)?(?:elector(?:\'s)?\s*name|mother(?:\'s)?\s*name|father(?:\'s)?\s*name|husband(?:\'s)?\s*name|relation(?:\s*name)?|name|नाम|नाव|मतदाराचे(?:\s*नाव)?|आईचे(?:\s*नाव)?|माता(?:\s*का\s*नाम)?|पिता(?:\s*का\s*नाम)?|पती(?:\s*का\s*नाम)?|पतीचे(?:\s*नाव)?|वडिलांचे(?:\s*नाव)?|signature|हस्ताक्षर|dob|date\s*of\s*birth|sex|gender)$', cleaned, re.I):
+    if re.search(r'^(?:[a-zA-Z\u0900-\u097F]{1,5}[\/\-:\.]\s*)?(?:elector(?:\'s)?(?:\s*name|\w{0,3})?|mother(?:\'s)?(?:\s*name|\w{0,3})?|father(?:\'s)?(?:\s*name|\w{0,3})?|husband(?:\'s)?(?:\s*name|\w{0,3})?|relation(?:\s*name)?|name|नाम|नाव|मतदाराचे(?:\s*नाव)?|आईचे(?:\s*नाव)?|माता(?:\s*का\s*नाम)?|पिता(?:\s*का\s*नाम)?|पती(?:\s*का\s*नाम)?|पतीचे(?:\s*नाव)?|वडिलांचे(?:\s*नाव)?|signature|हस्ताक्षर|dob|date\s*of\s*birth|sex|gender)$', cleaned, re.I):
         return True
 
     words = [w.lower() for w in re.sub(r'[^\w\s]', ' ', text).split()]
-    label_keywords = {"name", "father", "fathers", "father's", "husband", "husbands", "husband's", "mother", "mothers", "mother's", "signature", "elector", "electors", "elector's", "photo", "identity", "card", "department", "government", "india", "आयोग", "निवडणूक", "ओळख", "पत्र", "नाव", "आईचे", "वडिलांचे", "पतीचे", "मतदाराचे"}
-    if all(w in label_keywords or w in HEADER_WORDS for w in words):
+    label_keywords = {"name", "father", "fathers", "father's", "husband", "husbands", "husband's", "mother", "mothers", "mother's", "signature", "elector", "electors", "elector's", "photo", "identity", "card", "department", "government", "india", "आयोग", "निवडणूक", "ओळख", "पत्र", "नाव", "आईचे", "वडिलांचे", "पतीचे", "मतदाराचे", "other", "relation"}
+    if all(w in label_keywords or w in HEADER_WORDS or any(w.startswith(k) for k in ("mother", "father", "husband", "elector", "signat", "departm", "relation", "identit")) for w in words):
         return True
 
     return False
@@ -97,7 +97,7 @@ def clean_name_text(text: str) -> str:
 
     # 2. Strip comprehensive bilingual label prefixes
     cleaned = re.sub(
-        r'^(?:[a-zA-Z\u0900-\u097F]{1,5}[\/\-:\.]\s*)?(?:elector(?:\'s)?\s*name|mother(?:\'s)?\s*name|father(?:\'s)?\s*name|husband(?:\'s)?\s*name|relation(?:\s*name)?|name|नाम|नाव|मतदाराचे(?:\s*नाव)?|आईचे(?:\s*नाव)?|माता(?:\s*का\s*नाम)?|पिता(?:\s*का\s*नाम)?|पती(?:\s*का\s*नाम)?|पतीचे(?:\s*नाव)?|वडिलांचे(?:\s*नाव)?|other|s/o|w/o|d/o|m/o|c/o|son\s*of|wife\s*of|daughter\s*of|mother\s*of)\s*[:\-\/\.=\s]*',
+        r'^(?:[a-zA-Z\u0900-\u097F]{1,5}[\/\-:\.]\s*)?(?:elector(?:\'s)?(?:\s*name|\w{0,3})?|mother(?:\'s)?(?:\s*name|\w{0,3})?|father(?:\'s)?(?:\s*name|\w{0,3})?|husband(?:\'s)?(?:\s*name|\w{0,3})?|relation(?:\s*name)?|name|नाम|नाव|मतदाराचे(?:\s*नाव)?|आईचे(?:\s*नाव)?|माता(?:\s*का\s*नाम)?|पिता(?:\s*का\s*नाम)?|पती(?:\s*का\s*नाम)?|पतीचे(?:\s*नाव)?|वडिलांचे(?:\s*नाव)?|other|s/o|w/o|d/o|m/o|c/o|son\s*of|wife\s*of|daughter\s*of|mother\s*of)\s*[:\-\/\.=\s]*',
         '',
         formatted,
         flags=re.I
@@ -140,12 +140,12 @@ def validate_name(value: str) -> bool:
         return False
 
     words = [w.lower() for w in cleaned.split()]
-    label_keywords = {"name", "father", "fathers", "father's", "husband", "husbands", "husband's", "mother", "mothers", "mother's", "signature", "elector", "electors", "elector's", "department"}
+    label_keywords = {"name", "father", "fathers", "father's", "husband", "husbands", "husband's", "mother", "mothers", "mother's", "signature", "elector", "electors", "elector's", "department", "other", "relation", "photo", "identity", "card"}
 
-    if all(w in label_keywords for w in words):
+    if all(w in label_keywords or any(w.startswith(k) for k in ("mother", "father", "husband", "elector", "signat", "departm", "relation")) for w in words):
         return False
 
-    if len(words) == 1 and words[0] in HEADER_WORDS:
+    if len(words) == 1 and (words[0] in HEADER_WORDS or any(words[0].startswith(k) for k in ("mother", "father", "husband", "elector", "signat", "departm", "relation", "identit"))):
         return False
 
     if re.search(r'\d', cleaned):

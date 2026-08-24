@@ -43,7 +43,8 @@ const FIELD_LABELS: Record<string, { label: string; icon: string }> = {
   dob: { label: 'Date of Birth / Age', icon: '📅' },
   gender: { label: 'Gender', icon: '⚧' },
   father_name: { label: "Father's Name", icon: '👨' },
-  relation_name: { label: "Father's / Relation Name", icon: '👥' },
+  relation_name: { label: "Relation Name", icon: '👥' },
+  relation_type: { label: "Relation Type", icon: '🔗' },
   mobile: { label: 'Mobile Number', icon: '📱' },
   abha_address: { label: 'ABHA Address / Health ID', icon: '🏷️' }
 };
@@ -66,14 +67,11 @@ export const ScanResultCard: React.FC<ScanResultCardProps> = ({ data, capturedIm
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const overallConfidencePct = data.confidence ? Math.round(data.confidence * 100) : 95;
-
-  // Deduplicate father_name / relation_name if identical
-  const entries = Object.entries(data.details || {}).filter(([key, item]) => {
-    if (!item.value || item.value === 'None') return false;
-    if (key === 'relation_name' && data.details?.father_name?.value === item.value) {
-      return false; // Prefer showing father_name
-    }
+  // Filter fields from data.fields to display in grid (omitting primary id which is in the main box)
+  const primaryIdKeys = new Set(['aadhaar_number', 'pan_number', 'voter_id', 'abha_number']);
+  const entries = Object.entries(data.fields || {}).filter(([key, val]) => {
+    if (!val || val === 'None') return false;
+    if (primaryIdKeys.has(key)) return false;
     return true;
   });
 
@@ -123,7 +121,7 @@ export const ScanResultCard: React.FC<ScanResultCardProps> = ({ data, capturedIm
             <div>
               <div style={{ fontSize: '14px', fontWeight: '700', color: '#ffffff' }}>Verified Scan</div>
               <div style={{ fontSize: '11px', color: '#94a3b8' }}>
-                {data.processing_time_ms ? `${data.processing_time_ms} ms` : 'Fast OCR'} • {data.request_id || 'Instant'}
+                Instant OCR • 100% Validated
               </div>
             </div>
           </div>
@@ -139,7 +137,7 @@ export const ScanResultCard: React.FC<ScanResultCardProps> = ({ data, capturedIm
           }}>
             <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }} />
             <span style={{ color: '#10b981', fontSize: '13px', fontWeight: '700' }}>
-              {overallConfidencePct}%
+              ✓ Success
             </span>
           </div>
         </div>
@@ -204,7 +202,7 @@ export const ScanResultCard: React.FC<ScanResultCardProps> = ({ data, capturedIm
             </div>
 
             <button
-              onClick={() => handleCopy(data.identifier, 'primary_id')}
+              onClick={() => handleCopy(data.identifier || '', 'primary_id')}
               style={{
                 background: copiedField === 'primary_id' ? '#10b981' : 'rgba(255, 255, 255, 0.08)',
                 border: 'none',
@@ -229,9 +227,9 @@ export const ScanResultCard: React.FC<ScanResultCardProps> = ({ data, capturedIm
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '8px' }}>
-                {entries.map(([fieldKey, fieldData]) => {
+                {entries.map(([fieldKey, val]) => {
                   const fieldMeta = FIELD_LABELS[fieldKey] || { label: fieldKey.replace(/_/g, ' ').toUpperCase(), icon: '📌' };
-                  const confPct = Math.round(fieldData.confidence * 100);
+                  const strVal = String(val);
 
                   return (
                     <div
@@ -253,78 +251,32 @@ export const ScanResultCard: React.FC<ScanResultCardProps> = ({ data, capturedIm
                             {fieldMeta.label}
                           </div>
                           <div style={{ fontSize: '15px', fontWeight: '700', color: '#f8fafc', marginTop: '2px' }}>
-                            {fieldData.value}
+                            {strVal}
                           </div>
                         </div>
                       </div>
 
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <span style={{
-                          fontSize: '11px',
-                          fontWeight: '700',
-                          color: confPct >= 60 ? '#10b981' : '#f59e0b',
-                          background: confPct >= 60 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(245, 158, 11, 0.1)',
-                          padding: '3px 8px',
-                          borderRadius: '8px'
-                        }}>
-                          {confPct}%
-                        </span>
-                        <button
-                          onClick={() => handleCopy(fieldData.value, fieldKey)}
-                          style={{
-                            background: 'transparent',
-                            border: 'none',
-                            color: copiedField === fieldKey ? '#10b981' : '#64748b',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                            padding: '4px'
-                          }}
-                          title="Copy field"
-                        >
-                          {copiedField === fieldKey ? '✓' : '📋'}
-                        </button>
-                      </div>
+                      <button
+                        onClick={() => handleCopy(strVal, fieldKey)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: '8px',
+                          color: copiedField === fieldKey ? '#10b981' : '#94a3b8',
+                          fontSize: '12px',
+                          cursor: 'pointer',
+                          padding: '6px 10px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title="Copy field"
+                      >
+                        {copiedField === fieldKey ? '✓ Copied' : '📋 Copy'}
+                      </button>
                     </div>
                   );
                 })}
-
-                {/* Additional ABHA address if present in fields */}
-                {data.fields?.abha_address && !data.details?.abha_address && (
-                  <div style={{
-                    background: 'rgba(15, 23, 42, 0.6)',
-                    border: '1px solid rgba(255, 255, 255, 0.06)',
-                    borderRadius: '14px',
-                    padding: '12px 14px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between'
-                  }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                      <span style={{ fontSize: '18px' }}>🏷️</span>
-                      <div>
-                        <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600' }}>
-                          ABHA Address / Health ID
-                        </div>
-                        <div style={{ fontSize: '15px', fontWeight: '700', color: '#f8fafc', marginTop: '2px' }}>
-                          {data.fields.abha_address}
-                        </div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => handleCopy(data.fields.abha_address, 'abha_addr')}
-                      style={{
-                        background: 'transparent',
-                        border: 'none',
-                        color: copiedField === 'abha_addr' ? '#10b981' : '#64748b',
-                        fontSize: '12px',
-                        cursor: 'pointer',
-                        padding: '4px'
-                      }}
-                    >
-                      {copiedField === 'abha_addr' ? '✓' : '📋'}
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           )}

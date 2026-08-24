@@ -57,15 +57,8 @@ export interface FieldResultData {
 export interface ScanApiResponse {
   success: boolean;
   document_type: string;
-  identifier: string;
+  identifier?: string | null;
   fields: Record<string, any>;
-  confidence?: number;
-  requires_rescan: boolean;
-  processing_time_ms: number;
-  request_id: string;
   message?: string | null;
   error_code?: string | null;
-  details?: Record<string, FieldResultData>;
-  overall_status: 'ok' | 'rescan_required';
-  failed_fields?: string[] | null;
 }
