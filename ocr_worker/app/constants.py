@@ -4,7 +4,4 @@ COMMON_INDIAN_NAME_SUFFIXES = [
     "REDDY", "RAO", "DAS", "CHANDRA", "NATH"
 ]
 
-SPECIFIC_NAME_REPLACEMENTS = {
-    "HARIOM": "HARI OM",
-    "JAI": "JAI " # Example if needed, but we'll stick to HARIOM for now
-}
+SPECIFIC_NAME_REPLACEMENTS = {}

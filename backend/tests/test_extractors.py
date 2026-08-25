@@ -94,7 +94,7 @@ def test_passport_extractor():
 
     # 2. MRZ Line 2 format
     res_mrz = ext.extract([
-        {"text": "P<INDPATEL<<HARI<OM<<<<<<<<<<<<<<<<<<<<<<<<<", "confidence": 0.96},
+        {"text": "P<INDSHARMA<<AARAV<<<<<<<<<<<<<<<<<<<<<<<<<", "confidence": 0.96},
         {"text": "Z1234567<0IND0412285M3408151<<<<<<<<<<<<<<02", "confidence": 0.97}
     ])
     assert res_mrz is not None
@@ -161,9 +161,22 @@ class TestExtractorRegression:
         res = ext.extract([{"text": "random text", "confidence": 0.50}])
         assert res is None
 
+    def test_aadhaar_back_extractor(self):
+        from app.extractors.regex import AadhaarBackExtractor
+        ext = AadhaarBackExtractor()
+        res = ext.extract([
+            {"text": "Unique Identification Authority of India", "confidence": 0.95},
+            {"text": "Address: S/O Sanjay Kumar, 1013, Jamalpur, Haryana - 125120", "confidence": 0.92},
+            {"text": "9254 7440 0335", "confidence": 0.98}
+        ])
+        assert res is not None
+        assert res["document_type"] == "AADHAAR_CARD_BACK"
+        assert res["identifier"] == "925474400335"
+
     def test_verhoeff_validation_still_works(self):
         """Confirm Verhoeff validation hasn't been accidentally modified."""
         assert validate_verhoeff("999999999910") == True
         assert validate_verhoeff("999999999918") == False
         assert validate_verhoeff("abc") == False
+
 

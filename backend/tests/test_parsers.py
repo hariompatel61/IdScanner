@@ -6,9 +6,12 @@ Also tests edge cases: missing labels, low-confidence lines, OCR noise.
 import pytest
 from app.extractors.line_reconstructor import OCRLine
 from app.parsers.aadhaar import AadhaarParser
+from app.parsers.aadhaar_back import AadhaarBackParser
 from app.parsers.pan import PANParser
 from app.parsers.voter_id import VoterIDParser
 from app.parsers.abha import ABHAParser
+from app.parsers.farmer_id import FarmerIDParser
+from app.parsers.passport import PassportParser
 
 
 def _make_line(text, confidence=0.95, y_mid=0.0, x_start=0.0, x_end=100.0, line_index=0):
@@ -33,14 +36,14 @@ class TestAadhaarParser:
     def test_full_extraction(self):
         lines = [
             _make_line("Government of India", 0.95, y_mid=20, line_index=0),
-            _make_line("Hari Om Patel", 0.94, y_mid=60, line_index=1),
+            _make_line("Aarav Sharma", 0.94, y_mid=60, line_index=1),
             _make_line("DOB: 28/12/2004", 0.91, y_mid=100, line_index=2),
             _make_line("Male", 0.97, y_mid=140, line_index=3),
-            _make_line("8253 9563 3085", 0.98, y_mid=200, line_index=4),
+            _make_line("9999 9999 9910", 0.98, y_mid=200, line_index=4),
         ]
         result = self.parser.extract_fields(lines)
 
-        assert result.fields["name"].value == "Hari Om Patel"
+        assert result.fields["name"].value == "Aarav Sharma"
         assert result.fields["name"].status == "ok"
         assert result.fields["dob"].value == "28/12/2004"
         assert result.fields["dob"].status == "ok"
@@ -52,19 +55,19 @@ class TestAadhaarParser:
     def test_name_with_label_anchor(self):
         lines = [
             _make_line("Name", 0.90, y_mid=40, line_index=0),
-            _make_line("Hari Om Patel", 0.94, y_mid=60, line_index=1),
+            _make_line("Aarav Sharma", 0.94, y_mid=60, line_index=1),
             _make_line("DOB: 28/12/2004", 0.91, y_mid=100, line_index=2),
             _make_line("Gender", 0.90, y_mid=130, line_index=3),
             _make_line("Male", 0.97, y_mid=150, line_index=4),
         ]
         result = self.parser.extract_fields(lines)
 
-        assert result.fields["name"].value == "Hari Om Patel"
+        assert result.fields["name"].value == "Aarav Sharma"
         assert result.fields["name"].status == "ok"
 
     def test_hindi_gender(self):
         lines = [
-            _make_line("Hari Om Patel", 0.94, y_mid=60, line_index=0),
+            _make_line("Aarav Sharma", 0.94, y_mid=60, line_index=0),
             _make_line("DOB: 28/12/2004", 0.91, y_mid=100, line_index=1),
             _make_line("पुरुष", 0.92, y_mid=140, line_index=2),
         ]
@@ -74,7 +77,7 @@ class TestAadhaarParser:
 
     def test_missing_dob_triggers_rescan(self):
         lines = [
-            _make_line("Hari Om Patel", 0.94, y_mid=60, line_index=0),
+            _make_line("Aarav Sharma", 0.94, y_mid=60, line_index=0),
             _make_line("Male", 0.97, y_mid=140, line_index=1),
         ]
         result = self.parser.extract_fields(lines)
@@ -85,7 +88,7 @@ class TestAadhaarParser:
     def test_low_confidence_name(self):
         lines = [
             _make_line("Name", 0.90, y_mid=40, line_index=0),
-            _make_line("Hari Om Patel", 0.55, y_mid=60, line_index=1),
+            _make_line("Aarav Sharma", 0.55, y_mid=60, line_index=1),
             _make_line("DOB: 28/12/2004", 0.91, y_mid=100, line_index=2),
             _make_line("Male", 0.97, y_mid=140, line_index=3),
         ]
@@ -107,17 +110,17 @@ class TestPANParser:
             _make_line("INCOME TAX DEPARTMENT", 0.95, y_mid=20, line_index=0),
             _make_line("ABCDE1234F", 0.99, y_mid=60, line_index=1),
             _make_line("Name", 0.90, y_mid=100, line_index=2),
-            _make_line("Hari Om Patel", 0.95, y_mid=130, line_index=3),
+            _make_line("Aarav Sharma", 0.95, y_mid=130, line_index=3),
             _make_line("Father's Name", 0.88, y_mid=170, line_index=4),
-            _make_line("Ramesh Patel", 0.92, y_mid=200, line_index=5),
+            _make_line("Ramesh Sharma", 0.92, y_mid=200, line_index=5),
             _make_line("Date of Birth", 0.91, y_mid=240, line_index=6),
             _make_line("28/12/2004", 0.93, y_mid=270, line_index=7),
         ]
         result = self.parser.extract_fields(lines)
 
-        assert result.fields["name"].value == "Hari Om Patel"
+        assert result.fields["name"].value == "Aarav Sharma"
         assert result.fields["name"].status == "ok"
-        assert result.fields["father_name"].value == "Ramesh Patel"
+        assert result.fields["father_name"].value == "Ramesh Sharma"
         assert result.fields["father_name"].status == "ok"
         assert result.fields["dob"].value == "28/12/2004"
         assert result.fields["dob"].status == "ok"
@@ -126,7 +129,7 @@ class TestPANParser:
     def test_missing_father_name_triggers_rescan(self):
         lines = [
             _make_line("Name", 0.90, y_mid=100, line_index=0),
-            _make_line("Hari Om Patel", 0.95, y_mid=130, line_index=1),
+            _make_line("Aarav Sharma", 0.95, y_mid=130, line_index=1),
             _make_line("Date of Birth", 0.91, y_mid=240, line_index=2),
             _make_line("28/12/2004", 0.93, y_mid=270, line_index=3),
         ]
@@ -139,14 +142,14 @@ class TestPANParser:
         """Test extracting name when label and value are on the same line."""
         lines = [
             _make_line("INCOME TAX DEPARTMENT", 0.95, y_mid=20, line_index=0),
-            _make_line("Name: Hari Om Patel", 0.94, y_mid=100, line_index=1),
-            _make_line("Father's Name: Ramesh Patel", 0.90, y_mid=170, line_index=2),
+            _make_line("Name: Aarav Sharma", 0.94, y_mid=100, line_index=1),
+            _make_line("Father's Name: Ramesh Sharma", 0.90, y_mid=170, line_index=2),
             _make_line("Date of Birth: 28/12/2004", 0.91, y_mid=240, line_index=3),
         ]
         result = self.parser.extract_fields(lines)
 
-        assert result.fields["name"].value == "Hari Om Patel"
-        assert result.fields["father_name"].value == "Ramesh Patel"
+        assert result.fields["name"].value == "Aarav Sharma"
+        assert result.fields["father_name"].value == "Ramesh Sharma"
 
 
 # ── Voter ID Parser Tests ───────────────────────────────────────
@@ -159,9 +162,9 @@ class TestVoterIDParser:
         lines = [
             _make_line("ELECTION COMMISSION", 0.95, y_mid=20, line_index=0),
             _make_line("Name", 0.90, y_mid=60, line_index=1),
-            _make_line("Hari Om Patel", 0.94, y_mid=90, line_index=2),
+            _make_line("Aarav Sharma", 0.94, y_mid=90, line_index=2),
             _make_line("Father's Name", 0.88, y_mid=130, line_index=3),
-            _make_line("Ramesh Patel", 0.92, y_mid=160, line_index=4),
+            _make_line("Ramesh Sharma", 0.92, y_mid=160, line_index=4),
             _make_line("Gender", 0.90, y_mid=200, line_index=5),
             _make_line("Male", 0.97, y_mid=230, line_index=6),
             _make_line("Date of Birth", 0.91, y_mid=270, line_index=7),
@@ -170,8 +173,8 @@ class TestVoterIDParser:
         ]
         result = self.parser.extract_fields(lines)
 
-        assert result.fields["name"].value == "Hari Om Patel"
-        assert result.fields["relation_name"].value == "Ramesh Patel"
+        assert result.fields["name"].value == "Aarav Sharma"
+        assert result.fields["relation_name"].value == "Ramesh Sharma"
         assert result.fields["gender"].value == "Male"
         assert result.fields["dob"].value == "28/12/2004"
         assert result.overall_status == "ok"
@@ -180,9 +183,9 @@ class TestVoterIDParser:
         """Older Voter IDs show Age instead of DOB."""
         lines = [
             _make_line("Name", 0.90, y_mid=60, line_index=0),
-            _make_line("Hari Om Patel", 0.94, y_mid=90, line_index=1),
+            _make_line("Aarav Sharma", 0.94, y_mid=90, line_index=1),
             _make_line("Father's Name", 0.88, y_mid=130, line_index=2),
-            _make_line("Ramesh Patel", 0.92, y_mid=160, line_index=3),
+            _make_line("Ramesh Sharma", 0.92, y_mid=160, line_index=3),
             _make_line("Gender", 0.90, y_mid=200, line_index=4),
             _make_line("Male", 0.97, y_mid=230, line_index=5),
             _make_line("Age: 35", 0.91, y_mid=270, line_index=6),
@@ -195,15 +198,15 @@ class TestVoterIDParser:
     def test_husband_relation(self):
         lines = [
             _make_line("Name", 0.90, y_mid=60, line_index=0),
-            _make_line("Sita Patel", 0.94, y_mid=90, line_index=1),
+            _make_line("Sita Sharma", 0.94, y_mid=90, line_index=1),
             _make_line("Husband's Name", 0.88, y_mid=130, line_index=2),
-            _make_line("Ramesh Patel", 0.92, y_mid=160, line_index=3),
+            _make_line("Ramesh Sharma", 0.92, y_mid=160, line_index=3),
             _make_line("Female", 0.97, y_mid=200, line_index=4),
             _make_line("DOB: 15/06/1985", 0.91, y_mid=240, line_index=5),
         ]
         result = self.parser.extract_fields(lines)
 
-        assert result.fields["relation_name"].value == "Ramesh Patel"
+        assert result.fields["relation_name"].value == "Ramesh Sharma"
         assert result.fields["gender"].value == "Female"
 
 
@@ -217,7 +220,7 @@ class TestABHAParser:
         lines = [
             _make_line("ABHA", 0.95, y_mid=20, line_index=0),
             _make_line("Name", 0.90, y_mid=60, line_index=1),
-            _make_line("Hari Om Patel", 0.94, y_mid=90, line_index=2),
+            _make_line("Aarav Sharma", 0.94, y_mid=90, line_index=2),
             _make_line("Gender", 0.90, y_mid=130, line_index=3),
             _make_line("Male", 0.97, y_mid=160, line_index=4),
             _make_line("DOB: 28/12/2004", 0.91, y_mid=200, line_index=5),
@@ -226,7 +229,7 @@ class TestABHAParser:
         ]
         result = self.parser.extract_fields(lines)
 
-        assert result.fields["name"].value == "Hari Om Patel"
+        assert result.fields["name"].value == "Aarav Sharma"
         assert result.fields["gender"].value == "Male"
         assert result.fields["dob"].value == "28/12/2004"
         assert result.fields["mobile"].value == "9876543210"
@@ -236,7 +239,7 @@ class TestABHAParser:
         """Masked mobile numbers should NOT be extracted."""
         lines = [
             _make_line("Name", 0.90, y_mid=60, line_index=0),
-            _make_line("Hari Om Patel", 0.94, y_mid=90, line_index=1),
+            _make_line("Aarav Sharma", 0.94, y_mid=90, line_index=1),
             _make_line("Gender: Male", 0.97, y_mid=130, line_index=2),
             _make_line("DOB: 28/12/2004", 0.91, y_mid=200, line_index=3),
             _make_line("Mobile: XXXXXX3210", 0.93, y_mid=240, line_index=4),
@@ -251,7 +254,7 @@ class TestABHAParser:
         """Mobile is optional — missing mobile should NOT trigger rescan."""
         lines = [
             _make_line("Name", 0.90, y_mid=60, line_index=0),
-            _make_line("Hari Om Patel", 0.94, y_mid=90, line_index=1),
+            _make_line("Aarav Sharma", 0.94, y_mid=90, line_index=1),
             _make_line("Gender", 0.90, y_mid=130, line_index=2),
             _make_line("Male", 0.97, y_mid=160, line_index=3),
             _make_line("DOB: 28/12/2004", 0.91, y_mid=200, line_index=4),
@@ -266,7 +269,7 @@ class TestABHAParser:
         """Gender is mandatory — missing it should trigger rescan."""
         lines = [
             _make_line("Name", 0.90, y_mid=60, line_index=0),
-            _make_line("Hari Om Patel", 0.94, y_mid=90, line_index=1),
+            _make_line("Aarav Sharma", 0.94, y_mid=90, line_index=1),
             _make_line("DOB: 28/12/2004", 0.91, y_mid=200, line_index=2),
         ]
         result = self.parser.extract_fields(lines)
@@ -279,14 +282,14 @@ class TestABHAParser:
         lines = [
             _make_line("ABHA", 0.95, y_mid=20, line_index=0),
             _make_line("john.doe@abdm", 0.93, y_mid=50, line_index=1),
-            _make_line("Hari Om Patel", 0.94, y_mid=90, line_index=2),
+            _make_line("Aarav Sharma", 0.94, y_mid=90, line_index=2),
             _make_line("Male", 0.97, y_mid=130, line_index=3),
             _make_line("DOB: 28/12/2004", 0.91, y_mid=170, line_index=4),
         ]
         result = self.parser.extract_fields(lines)
 
-        # The name should be "Hari Om Patel", not the ABHA address
-        assert result.fields["name"].value == "Hari Om Patel"
+        # The name should be "Aarav Sharma", not the ABHA address
+        assert result.fields["name"].value == "Aarav Sharma"
 
 
 from app.parsers.abha import ABHAParser
@@ -332,8 +335,8 @@ class TestPassportParser:
             _make_line("PASSPORT", 0.98, y_mid=20, line_index=0),
             _make_line("REPUBLIC OF INDIA", 0.95, y_mid=40, line_index=1),
             _make_line("Passport No. Z1234567", 0.96, y_mid=70, line_index=2),
-            _make_line("Surname: PATEL", 0.94, y_mid=100, line_index=3),
-            _make_line("Given Name(s): HARI OM", 0.95, y_mid=130, line_index=4),
+            _make_line("Surname: SHARMA", 0.94, y_mid=100, line_index=3),
+            _make_line("Given Name(s): AARAV", 0.95, y_mid=130, line_index=4),
             _make_line("Nationality: INDIAN", 0.96, y_mid=160, line_index=5),
             _make_line("Sex: M", 0.95, y_mid=190, line_index=6),
             _make_line("Date of Birth: 28/12/2004", 0.94, y_mid=220, line_index=7),
@@ -341,9 +344,9 @@ class TestPassportParser:
         ]
         result = self.parser.extract_fields(lines)
 
-        assert result.fields["name"].value == "HARI OM PATEL"
-        assert result.fields["surname"].value == "PATEL"
-        assert result.fields["given_name"].value == "HARI OM"
+        assert result.fields["name"].value == "AARAV SHARMA"
+        assert result.fields["surname"].value == "SHARMA"
+        assert result.fields["given_name"].value == "AARAV"
         assert result.fields["gender"].value == "Male"
         assert result.fields["dob"].value == "28/12/2004"
         assert result.fields["expiry_date"].value == "15/08/2034"
@@ -352,18 +355,58 @@ class TestPassportParser:
 
     def test_mrz_extraction(self):
         lines = [
-            _make_line("P<INDPATEL<<HARI<OM<<<<<<<<<<<<<<<<<<<<<<<<<", 0.96, y_mid=400, line_index=0),
+            _make_line("P<INDSHARMA<<AARAV<<<<<<<<<<<<<<<<<<<<<<<<<", 0.96, y_mid=400, line_index=0),
             _make_line("Z1234567<0IND0412285M3408151<<<<<<<<<<<<<<02", 0.97, y_mid=430, line_index=1),
         ]
         result = self.parser.extract_fields(lines)
 
-        assert result.fields["name"].value == "HARI OM PATEL"
-        assert result.fields["surname"].value == "PATEL"
-        assert result.fields["given_name"].value == "HARI OM"
+        assert result.fields["name"].value == "AARAV SHARMA"
+        assert result.fields["surname"].value == "SHARMA"
+        assert result.fields["given_name"].value == "AARAV"
         assert result.fields["gender"].value == "Male"
         assert result.fields["dob"].value == "28/12/2004"
         assert result.fields["expiry_date"].value == "15/08/2034"
         assert result.fields["nationality"].value == "INDIAN"
+        assert result.overall_status == "ok"
+
+
+# ── Aadhaar Back Parser Tests ───────────────────────────────────
+
+class TestAadhaarBackParser:
+    def setup_method(self):
+        self.parser = AadhaarBackParser()
+
+    def test_clean_aadhaar_back(self):
+        lines = [
+            _make_line("Unique Identification Authority of India", y_mid=10),
+            _make_line("Address:", y_mid=30),
+            _make_line("S/O: Sanjay Kumar, 1013, Jamalpur Shekhan,", y_mid=50),
+            _make_line("Fatehabad, Haryana - 125120", y_mid=70),
+            _make_line("9254 7440 0335", y_mid=90),
+            _make_line("VID: 9111 7066 7723 9908", y_mid=110),
+        ]
+        result = self.parser.extract_fields(lines)
+        assert result.fields["aadhaar_number"].value == "925474400335"
+        assert result.fields["relation_type"].value == "S/O"
+        assert result.fields["relation_name"].value == "Sanjay Kumar"
+        assert result.fields["state"].value == "Haryana"
+        assert result.fields["pincode"].value == "125120"
+        assert "1013, Jamalpur Shekhan" in result.fields["address"].value
+        assert result.overall_status == "ok"
+
+    def test_hindi_aadhaar_back(self):
+        lines = [
+            _make_line("भारतीय विशिष्ट पहचान प्राधिकरण", y_mid=10),
+            _make_line("पता:", y_mid=30),
+            _make_line("आत्मज: रामवीर सिंह, दावकोरा, बुलंदशहर,", y_mid=50),
+            _make_line("उत्तर प्रदेश - 202394", y_mid=70),
+            _make_line("5276 1381 5535", y_mid=90),
+        ]
+        result = self.parser.extract_fields(lines)
+        assert result.fields["aadhaar_number"].value == "527613815535"
+        assert result.fields["relation_type"].value == "S/O"
+        assert result.fields["state"].value == "Uttar Pradesh"
+        assert result.fields["pincode"].value == "202394"
         assert result.overall_status == "ok"
 
 
@@ -372,14 +415,15 @@ class TestPassportParser:
 class TestParserInterface:
     """Verify all parsers implement the same interface correctly."""
 
-    @pytest.mark.parametrize("parser_class", [AadhaarParser, PANParser, VoterIDParser, ABHAParser, FarmerIDParser, PassportParser])
+    @pytest.mark.parametrize("parser_class", [AadhaarParser, AadhaarBackParser, PANParser, VoterIDParser, ABHAParser, FarmerIDParser, PassportParser])
     def test_empty_input_returns_rescan(self, parser_class):
         parser = parser_class()
         result = parser.extract_fields([])
         assert result.overall_status == "rescan_required"
         assert len(result.failed_fields) > 0
 
-    @pytest.mark.parametrize("parser_class", [AadhaarParser, PANParser, VoterIDParser, ABHAParser, FarmerIDParser, PassportParser])
+    @pytest.mark.parametrize("parser_class", [AadhaarParser, AadhaarBackParser, PANParser, VoterIDParser, ABHAParser, FarmerIDParser, PassportParser])
     def test_has_mandatory_fields(self, parser_class):
         parser = parser_class()
         assert len(parser.MANDATORY_FIELDS) > 0
+

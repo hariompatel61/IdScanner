@@ -18,6 +18,12 @@ class AadhaarExtractor(BaseExtractor):
         if re.search(r'(agri\s*record|farmer\s*id|farmerid|kisan\s*id|kisan\s*card|agrirecord)', all_text, re.I):
             return None
 
+        # If document is clearly the back side (has Address / S/O / P.O. Box), yield to AadhaarBackExtractor
+        is_back = bool(re.search(r'(address\s*:|पता\s*:|p\.o\.\s*box|help@uidai|www\.uidai|s/o|d/o|w/o|c/o)', all_text, re.I))
+        has_front_markers = bool(re.search(r'(dob|date\s*of\s*birth|जन्म\s*तिथि|male|female|पुरुष|महिला)', all_text, re.I))
+        if is_back and not has_front_markers:
+            return None
+
         best_candidate = None
         highest_conf = 0.0
 
@@ -42,6 +48,54 @@ class AadhaarExtractor(BaseExtractor):
         if best_candidate:
             return {
                 "document_type": "AADHAAR_CARD",
+                "identifier": best_candidate,
+                "confidence": highest_conf
+            }
+        return None
+
+class AadhaarBackExtractor(BaseExtractor):
+    def __init__(self):
+        self.pattern = re.compile(r'\b(\d{4})[\s\-]?[Oo0]?[\s\-]?(\d{4})[\s\-]?[Oo0]?[\s\-]?(\d{4})\b')
+
+    def extract(self, ocr_results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        all_text = " ".join([l.get('text', '') for l in ocr_results])
+        if re.search(r'(agri\s*record|farmer\s*id|farmerid|kisan\s*id|kisan\s*card|agrirecord)', all_text, re.I):
+            return None
+
+        is_back = bool(re.search(r'(address|पता|unique\s*identification|uidai|p\.o\.\s*box|help@uidai|www\.uidai|1947|s/o|s/0|d/o|d/0|w/o|w/0|c/o|c/0)', all_text, re.I))
+        
+        best_candidate = None
+        highest_conf = 0.0
+
+        for line in ocr_results:
+            text = line.get('text', '')
+            conf = line.get('confidence', 0.0)
+            
+            matches = self.pattern.finditer(text)
+            for match in matches:
+                raw_str = match.group(0)
+                clean_str = re.sub(r'[Oo]', '0', raw_str)
+                clean_str = re.sub(r'[^\d]', '', clean_str)
+                if len(clean_str) == 12:
+                    if validate_verhoeff(clean_str):
+                        if conf > highest_conf:
+                            highest_conf = conf
+                            best_candidate = clean_str
+
+        # Also check unspaced 12-digit lines
+        if not best_candidate:
+            for line in ocr_results:
+                text = line.get('text', '')
+                conf = line.get('confidence', 0.0)
+                digits = re.sub(r'[^\d]', '', text)
+                if len(digits) == 12 and validate_verhoeff(digits):
+                    if conf > highest_conf:
+                        highest_conf = conf
+                        best_candidate = digits
+
+        if best_candidate and is_back:
+            return {
+                "document_type": "AADHAAR_CARD_BACK",
                 "identifier": best_candidate,
                 "confidence": highest_conf
             }

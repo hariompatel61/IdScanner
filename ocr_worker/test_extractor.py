@@ -99,3 +99,21 @@ data = {
 
 res = extract_demographics(data["raw_results"])
 print(res)
+
+
+
+
+
+
+
+
+
+$IP="14.141.174.235"
+
+1..1024 | ForEach-Object {
+    $p=$_
+    if (Test-NetConnection $IP -Port $p -InformationLevel Quiet -WarningAction SilentlyContinue) {
+        Write-Host "$p OPEN" -ForegroundColor Green
+    }
+}
+

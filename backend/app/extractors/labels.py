@@ -68,9 +68,19 @@ LABELS = {
         "nationality", "citizenship", "country code", "राष्ट्रीयता"
     ],
 
+    # --- Address specific ---
+    "address": [
+        "address", "पता", "पत्ता", "addr", "addres", "addrees", "निवासाचा पत्ता", "कायमचा पत्ता"
+    ],
+
     # --- Headers ---
     "aadhaar_header": [
         "government of india", "भारत सरकार", "unique identification", "uidai", "आधार", "aadhaar"
+    ],
+    "aadhaar_back_header": [
+        "unique identification authority of india", "unique identification authority",
+        "भारतीय विशिष्ट पहचान प्राधिकरण", "भारतीय विशिष्ट ओळख प्राधिकरण", "help@uidai.gov.in",
+        "www.uidai.gov.in", "1947", "p.o. box no. 1947", "p.o. box"
     ],
     "pan_header": [
         "income tax department", "income tax", "permanent account number", "govt. of india", "आयकर विभाग"

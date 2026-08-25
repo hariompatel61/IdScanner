@@ -9,10 +9,17 @@ interface ScanResultCardProps {
 
 const DOC_CONFIGS: Record<string, { label: string; badgeColor: string; bgGradient: string; icon: string; idLabel: string }> = {
   aadhaar_card: {
-    label: 'Aadhaar Card',
+    label: 'Aadhaar Card (Front)',
     badgeColor: '#f97316',
     bgGradient: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(30, 41, 59, 0.95) 100%)',
     icon: '🇮🇳',
+    idLabel: 'Aadhaar Number'
+  },
+  aadhaar_card_back: {
+    label: 'Aadhaar Card (Back Side)',
+    badgeColor: '#f97316',
+    bgGradient: 'linear-gradient(135deg, rgba(249, 115, 22, 0.15) 0%, rgba(30, 41, 59, 0.95) 100%)',
+    icon: '🏠',
     idLabel: 'Aadhaar Number'
   },
   pan_card: {
@@ -61,6 +68,9 @@ const FIELD_LABELS: Record<string, { label: string; icon: string }> = {
   father_name: { label: "Father's Name", icon: '👨' },
   relation_name: { label: "Relation Name", icon: '👥' },
   relation_type: { label: "Relation Type", icon: '🔗' },
+  address: { label: 'Full Address', icon: '📍' },
+  state: { label: 'State / Union Territory', icon: '🗺️' },
+  pincode: { label: 'PIN Code', icon: '📮' },
   mobile: { label: 'Mobile Number', icon: '📱' },
   aadhaar_number: { label: 'Aadhaar Number', icon: '🇮🇳' },
   expiry_date: { label: 'Date of Expiry', icon: '⏳' },

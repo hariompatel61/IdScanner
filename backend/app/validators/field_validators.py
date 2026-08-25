@@ -74,25 +74,22 @@ def split_word_suffixes(word: str) -> List[str]:
             if len(prefix) >= 2:
                 return split_word_suffixes(prefix) + [word[-len(suffix):]]
 
-    if word.upper() == "HARIOM":
-        return ["HARI", "OM"]
-
     return [word]
 
 
 def clean_name_text(text: str) -> str:
     """
     Advanced Name, Middle Name & Surname cleaner.
-    1. Splits delimiters (dots, colons, slashes, hyphens) -> 'Hari.Om.Patel' -> 'Hari Om Patel'
+    1. Splits delimiters (dots, colons, slashes, hyphens) -> 'John.David.Smith' -> 'John David Smith'
     2. Strips bilingual label prefixes -> "Elector's Name: ROHTASH" -> "ROHTASH"
-    3. Splits camelCase boundaries -> 'HarishankarPatel' -> 'Harishankar Patel'
+    3. Splits camelCase boundaries -> 'AaravSharma' -> 'Aarav Sharma'
     4. Recursively splits unspaced surname boundaries without corrupting non-compound names (e.g. Ramesh -> Ramesh)
     5. Normalizes whitespace cleanly
     """
     if not text or is_pure_label_line(text):
         return ""
 
-    # 1. Delimiter spacing: e.g. "NAME:ROHTASH", "Hari.Om.Patel" -> "NAME : ROHTASH", "Hari Om Patel"
+    # 1. Delimiter spacing: e.g. "NAME:ROHTASH", "John.David.Smith" -> "NAME : ROHTASH", "John David Smith"
     formatted = re.sub(r'([:\/\-=\.,_+])', r' \1 ', text)
 
     # 2. Strip comprehensive bilingual label prefixes
@@ -109,7 +106,7 @@ def clean_name_text(text: str) -> str:
     # 3. Replace colons, dots, underscores, slashes, hyphens with spaces
     cleaned = re.sub(r'[:\._\-/+=]+', ' ', cleaned)
 
-    # 4. Split camelCase/PascalCase: e.g. "HarishankarPatel" -> "Harishankar Patel"
+    # 4. Split camelCase/PascalCase: e.g. "AaravSharma" -> "Aarav Sharma"
     cleaned = re.sub(r'([a-z])([A-Z])', r'\1 \2', cleaned)
 
     # 5. Remove any leftover non-letter characters
@@ -375,3 +372,96 @@ def normalize_mobile(value: str) -> Optional[str]:
     if validate_mobile(cleaned):
         return cleaned
     return None
+
+
+# ── Indian States & Union Territories ────────────────────────────
+
+INDIAN_STATES_UTS = [
+    "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
+    "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
+    "Kerala", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya", "Mizoram",
+    "Nagaland", "Odisha", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu",
+    "Telangana", "Tripura", "Uttar Pradesh", "Uttarakhand", "West Bengal",
+    "Andaman and Nicobar Islands", "Chandigarh", "Dadra and Nagar Haveli and Daman and Diu",
+    "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
+]
+
+
+def validate_pincode(value: str) -> bool:
+    """Validates 6-digit Indian PIN code."""
+    if not value:
+        return False
+    cleaned = re.sub(r'[^\d]', '', value.strip())
+    return bool(re.match(r'^[1-9][0-9]{5}$', cleaned))
+
+
+def normalize_pincode(value: str) -> Optional[str]:
+    """Normalizes 6-digit PIN code."""
+    if not value:
+        return None
+    cleaned = re.sub(r'[^\d]', '', value.strip())
+    if validate_pincode(cleaned):
+        return cleaned
+    return None
+
+
+STATE_ALIASES_MAP = {
+    "उत्तर प्रदेश": "Uttar Pradesh",
+    "उत्तरप्रदेश": "Uttar Pradesh",
+    "हरियाणा": "Haryana",
+    "महाराष्ट्र": "Maharashtra",
+    "बिहार": "Bihar",
+    "राजस्थान": "Rajasthan",
+    "मध्य प्रदेश": "Madhya Pradesh",
+    "मध्यप्रदेश": "Madhya Pradesh",
+    "गुजरात": "Gujarat",
+    "पंजाब": "Punjab",
+    "पश्चिम बंगाल": "West Bengal",
+    "दिल्ली": "Delhi",
+    "उत्तराखंड": "Uttarakhand",
+    "झारखंड": "Jharkhand",
+    "छत्तीसगढ़": "Chhattisgarh",
+    "हिमाचल प्रदेश": "Himachal Pradesh",
+    "ओडिशा": "Odisha",
+    "उड़ीसा": "Odisha",
+    "कर्नाटक": "Karnataka",
+    "केरल": "Kerala",
+    "तमिलनाडु": "Tamil Nadu",
+    "तमिल नाडु": "Tamil Nadu",
+    "तेलंगाना": "Telangana",
+    "आंध्र प्रदेश": "Andhra Pradesh",
+    "असम": "Assam",
+    "जम्मू और कश्मीर": "Jammu and Kashmir",
+    "लद्दाख": "Ladakh",
+    "गोवा": "Goa"
+}
+
+
+def extract_state_from_text(text: str) -> Optional[str]:
+    """Matches and normalizes Indian State / UT from text string (Bilingual English/Hindi)."""
+    if not text:
+        return None
+
+    # Check Hindi aliases first
+    for alias, canonical in STATE_ALIASES_MAP.items():
+        if alias in text:
+            return canonical
+
+    # Check English names with flexible whitespace
+    for state in INDIAN_STATES_UTS:
+        pattern = re.escape(state).replace(r'\ ', r'\s*')
+        if re.search(r'\b' + pattern + r'\b', text, re.I):
+            return state
+
+    return None
+
+
+def extract_pincode_from_text(text: str) -> Optional[str]:
+    """Extracts 6-digit Indian PIN code from address text."""
+    if not text:
+        return None
+    matches = re.findall(r'\b([1-9][0-9]{5})\b', text)
+    if matches:
+        return matches[-1]
+    return None
+

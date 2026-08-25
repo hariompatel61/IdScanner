@@ -103,8 +103,8 @@ class BaseDocParser:
     ) -> Tuple[Optional[str], float]:
         """
         Extracts the value portion from the same line as the anchor.
-        E.g. 'Name:Hari.OmPatel' -> 'Hari Om Patel'
-             'Father\'s Name: Ramesh Patel' -> 'Ramesh Patel'
+        E.g. 'Name:Aarav.Sharma' -> 'Aarav Sharma'
+             'Father\'s Name: Ramesh Sharma' -> 'Ramesh Sharma'
         """
         line = ocr_lines[anchor_idx]
         text = line.text.strip()

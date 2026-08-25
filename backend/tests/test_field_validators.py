@@ -168,10 +168,10 @@ class TestNormalizeMobile:
 
 class TestValidateName:
     def test_valid_name(self):
-        assert validate_name("Hari Om Patel") is True
+        assert validate_name("Aarav Sharma") is True
 
     def test_valid_hindi_name(self):
-        assert validate_name("हरिओम पटेल") is True
+        assert validate_name("आरव शर्मा") is True
 
     def test_invalid_too_short(self):
         assert validate_name("A") is False

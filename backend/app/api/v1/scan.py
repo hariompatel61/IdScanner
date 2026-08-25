@@ -12,6 +12,7 @@ from app.core.scan_logger import scan_logger
 from app.ocr.engine import ocr_engine
 from app.extractors.regex import (
     AadhaarExtractor,
+    AadhaarBackExtractor,
     PANExtractor,
     VoterIDExtractor,
     ABHAExtractor,
@@ -20,6 +21,7 @@ from app.extractors.regex import (
 )
 from app.extractors.line_reconstructor import reconstruct_lines
 from app.parsers.aadhaar import AadhaarParser
+from app.parsers.aadhaar_back import AadhaarBackParser
 from app.parsers.pan import PANParser
 from app.parsers.voter_id import VoterIDParser
 from app.parsers.abha import ABHAParser
@@ -36,6 +38,7 @@ MAX_FILE_SIZE_BYTES = settings.max_image_size_mb * 1024 * 1024
 
 # Instantiate Singleton Extractors
 _aadhaar_ext = AadhaarExtractor()
+_aadhaar_back_ext = AadhaarBackExtractor()
 _pan_ext = PANExtractor()
 _voter_ext = VoterIDExtractor()
 _abha_ext = ABHAExtractor()
@@ -45,6 +48,9 @@ _passport_ext = PassportExtractor()
 EXTRACTOR_MAP = {
     "aadhaar_card": _aadhaar_ext,
     "aadhaar": _aadhaar_ext,
+    "aadhaar_card_back": _aadhaar_back_ext,
+    "aadhaar_back": _aadhaar_back_ext,
+    "aadhar_back": _aadhaar_back_ext,
     "pan_card": _pan_ext,
     "pan": _pan_ext,
     "voter_id": _voter_ext,
@@ -66,6 +72,9 @@ EXTRACTOR_MAP = {
 PARSER_MAP = {
     "aadhaar_card": AadhaarParser(),
     "aadhaar": AadhaarParser(),
+    "aadhaar_card_back": AadhaarBackParser(),
+    "aadhaar_back": AadhaarBackParser(),
+    "aadhar_back": AadhaarBackParser(),
     "pan_card": PANParser(),
     "pan": PANParser(),
     "voter_id": VoterIDParser(),
@@ -86,6 +95,8 @@ PARSER_MAP = {
 # Document type canonical map
 DOC_TYPE_NORMAL_MAP = {
     "aadhaar": "aadhaar_card",
+    "aadhaar_back": "aadhaar_card_back",
+    "aadhar_back": "aadhaar_card_back",
     "pan": "pan_card",
     "voter": "voter_id",
     "epic": "voter_id",
@@ -162,7 +173,7 @@ async def scan_document(
     if target_doc_type and target_doc_type in EXTRACTOR_MAP:
         selected_extractors = [EXTRACTOR_MAP[target_doc_type]]
     else:
-        selected_extractors = [_aadhaar_ext, _pan_ext, _voter_ext, _abha_ext, _farmer_ext, _passport_ext]
+        selected_extractors = [_aadhaar_ext, _aadhaar_back_ext, _pan_ext, _voter_ext, _abha_ext, _farmer_ext, _passport_ext]
 
     # 4. OCR Processing (Pass 1 - Fast Primary Pass)
     raw_results = ocr_engine.process_image(img, apply_adaptive_threshold=False)
@@ -178,9 +189,23 @@ async def scan_document(
             best_doc_result = res
             best_raw_results = raw_results
 
-    # 5. OCR Processing (Pass 2 - Adaptive Threshold Fallback ONLY if no document found or confidence < retry_threshold)
+    # 5. Orientation Fallback (Rotate 90 deg if portrait or low confidence)
     if not best_doc_result or best_doc_conf < settings.retry_threshold:
-        logger.info(f"[{request_id}] Pass 1 confidence low ({best_doc_conf:.2f}). Running Pass 2 (adaptive thresholding).")
+        for rot_code in [cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_90_CLOCKWISE]:
+            rotated_img = cv2.rotate(img, rot_code)
+            raw_rot = ocr_engine.process_image(rotated_img, apply_adaptive_threshold=False)
+            for ext in selected_extractors:
+                res = ext.extract(raw_rot)
+                if res and res["confidence"] > best_doc_conf:
+                    best_doc_conf = res["confidence"]
+                    best_doc_result = res
+                    best_raw_results = raw_rot
+            if best_doc_result and best_doc_conf >= settings.high_confidence_threshold:
+                break
+
+    # 6. OCR Processing (Pass 2 - Adaptive Threshold Fallback ONLY if still below threshold)
+    if not best_doc_result or best_doc_conf < settings.retry_threshold:
+        logger.info(f"[{request_id}] Primary passes low ({best_doc_conf:.2f}). Running adaptive thresholding pass.")
         raw_results_pass2 = ocr_engine.process_image(img, apply_adaptive_threshold=True)
         
         for ext in selected_extractors:
@@ -192,7 +217,7 @@ async def scan_document(
 
     processing_time_ms = int((time.time() - start_time) * 1000)
 
-    # 6. Evaluation & Response Generation
+    # 7. Evaluation & Response Generation
     if best_doc_result and best_doc_conf >= settings.high_confidence_threshold:
         raw_doc_type = best_doc_result["document_type"].lower()
         doc_type = DOC_TYPE_NORMAL_MAP.get(raw_doc_type, raw_doc_type)
@@ -200,7 +225,7 @@ async def scan_document(
 
         # Build fields dictionary
         fields: Dict[str, Any] = {}
-        if doc_type == "aadhaar_card":
+        if doc_type in ["aadhaar_card", "aadhaar_card_back"]:
             fields["aadhaar_number"] = identifier
         elif doc_type == "pan_card":
             fields["pan_number"] = identifier

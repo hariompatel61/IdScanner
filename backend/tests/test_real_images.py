@@ -13,7 +13,7 @@ from app.ocr.engine import ocr_engine
 from app.extractors.line_reconstructor import reconstruct_lines
 from app.api.v1.scan import _aadhaar_ext, _pan_ext, _voter_ext, _abha_ext, _farmer_ext, PARSER_MAP, DOC_TYPE_NORMAL_MAP
 
-TEST_IMAGE_DIR = r"C:\Users\Hariom_patel\Documents\IDScanner\test_image"
+TEST_IMAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "test_image"))
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -205,4 +205,53 @@ class TestRealImages:
         assert parsed.fields["gender"].value == "Male"
         assert parsed.fields["mobile"].value == "9027956097"
         assert parsed.fields["aadhaar_number"].value == "527613815535"
+
+    def test_aadhaar_back_1_card(self):
+        from app.api.v1.scan import _aadhaar_back_ext
+        img_path = os.path.join(TEST_IMAGE_DIR, "aadhaar_back_1.jpg")
+        assert os.path.exists(img_path), f"File missing: {img_path}"
+
+        img = cv2.imread(img_path)
+        # Image is vertically oriented in capture; rotate CCW to horizontal reading direction
+        rotated_img = cv2.rotate(img, cv2.ROTATE_90_COUNTERCLOCKWISE)
+        raw_results = ocr_engine.process_image(rotated_img)
+        ext_res = _aadhaar_back_ext.extract(raw_results)
+
+        assert ext_res is not None
+        assert ext_res["identifier"] == "527613815535"
+
+        lines = reconstruct_lines(raw_results)
+        parser = PARSER_MAP["aadhaar_card_back"]
+        parsed = parser.extract_fields(lines)
+
+        assert parsed.overall_status == "ok"
+        assert parsed.fields["aadhaar_number"].value == "527613815535"
+        assert parsed.fields["relation_type"].value == "S/O"
+        assert parsed.fields["relation_name"].value == "Ramveer Singh"
+        assert parsed.fields["state"].value == "Uttar Pradesh"
+        assert parsed.fields["pincode"].value == "202394"
+
+    def test_aadhaar_back_2_card(self):
+        from app.api.v1.scan import _aadhaar_back_ext
+        img_path = os.path.join(TEST_IMAGE_DIR, "aadhaar_back_2.png")
+        assert os.path.exists(img_path), f"File missing: {img_path}"
+
+        img = cv2.imread(img_path)
+        raw_results = ocr_engine.process_image(img)
+
+        ext_res = _aadhaar_back_ext.extract(raw_results)
+        assert ext_res is not None
+        assert ext_res["identifier"] == "925474400335"
+
+        lines = reconstruct_lines(raw_results)
+        parser = PARSER_MAP["aadhaar_card_back"]
+        parsed = parser.extract_fields(lines)
+
+        assert parsed.overall_status == "ok"
+        assert parsed.fields["aadhaar_number"].value == "925474400335"
+        assert parsed.fields["relation_type"].value == "S/O"
+        assert parsed.fields["relation_name"].value == "Sanjay Kumar"
+        assert parsed.fields["state"].value == "Haryana"
+        assert parsed.fields["pincode"].value == "125120"
+
 

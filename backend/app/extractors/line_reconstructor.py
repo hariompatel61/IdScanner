@@ -2,7 +2,7 @@
 Line Reconstructor — Sorts and groups raw OCR bounding-box output
 into logical reading order (top-to-bottom, left-to-right within bands).
 
-This is critical because labels ("Name") and values ("Hari Om Patel")
+This is critical because labels ("Name") and values ("Aarav Sharma")
 often appear on adjacent lines or adjacent horizontal positions, and
 raw OCR order is not guaranteed to be spatially consistent.
 """

@@ -108,14 +108,14 @@ class TestReconstructLines:
             _make_ocr_entry("INCOME TAX DEPARTMENT", 0.95, 200, 20, 700, 50),
             _make_ocr_entry("ABCDE1234F", 0.99, 50, 180, 350, 220),
             _make_ocr_entry("Name", 0.90, 50, 240, 150, 260),
-            _make_ocr_entry("HARI OM PATEL", 0.94, 50, 280, 350, 310),
+            _make_ocr_entry("AARAV SHARMA", 0.94, 50, 280, 350, 310),
             _make_ocr_entry("Father's Name", 0.88, 50, 330, 250, 350),
-            _make_ocr_entry("RAMESH PATEL", 0.92, 50, 370, 300, 400),
+            _make_ocr_entry("RAMESH SHARMA", 0.92, 50, 370, 300, 400),
             _make_ocr_entry("Date of Birth", 0.91, 50, 420, 250, 440),
             _make_ocr_entry("28/12/2004", 0.93, 50, 460, 250, 490),
         ]
         result = reconstruct_lines(raw, y_tolerance=15)
         texts = [r.text for r in result]
         assert texts[0] == "INCOME TAX DEPARTMENT"
-        assert "HARI OM PATEL" in texts
+        assert "AARAV SHARMA" in texts
         assert "28/12/2004" in texts
