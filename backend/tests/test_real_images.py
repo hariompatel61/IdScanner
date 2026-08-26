@@ -230,6 +230,12 @@ class TestRealImages:
         assert parsed.fields["relation_name"].value == "Ramveer Singh"
         assert parsed.fields["state"].value == "Uttar Pradesh"
         assert parsed.fields["pincode"].value == "202394"
+        assert parsed.fields["address"].value is not None
+        assert "Ramveer" in parsed.fields["address"].value
+        assert "Unique" not in parsed.fields["address"].value
+        assert "ldontificalion" not in parsed.fields["address"].value
+        assert "ldentificalion" not in parsed.fields["address"].value
+        assert "1947" not in parsed.fields["address"].value
 
     def test_aadhaar_back_2_card(self):
         from app.api.v1.scan import _aadhaar_back_ext
@@ -253,5 +259,11 @@ class TestRealImages:
         assert parsed.fields["relation_name"].value == "Sanjay Kumar"
         assert parsed.fields["state"].value == "Haryana"
         assert parsed.fields["pincode"].value == "125120"
+        assert parsed.fields["address"].value is not None
+        assert "Sanjay" in parsed.fields["address"].value
+        assert "Unique" not in parsed.fields["address"].value
+        assert "Bengaluru" not in parsed.fields["address"].value
+        assert "560001" not in parsed.fields["address"].value
+        assert "1947" not in parsed.fields["address"].value
 
 

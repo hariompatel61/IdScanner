@@ -175,9 +175,26 @@ class BaseDocParser:
         ocr_lines: List[OCRLine],
         label_key: str = "dob",
     ) -> FieldResult:
-        """Extract and validate a date field, ignoring download/issue dates."""
+        """
+        Extract and validate a date field.
+        Strict 'no guessing' rules:
+        - Ignores download/issue/valid/print/expiry lines.
+        - NEVER returns helpline 1947, 18003001947, 18001801947 as DOB (even as year).
+        - Third-priority fallback only matches full DD/MM/YYYY dates, NOT standalone years.
+        """
+        _HELPLINE_PATTERN = re.compile(r'\b(1947|1800[-\s]?\d{3}[-\s]?\d{3,4}|14477)\b')
+
+        def _is_helpline_only_line(text: str) -> bool:
+            """Return True if the line is purely a helpline or toll-free number (not a date)."""
+            if re.search(r'\b\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4}\b', text):
+                return False
+            stripped = re.sub(r'[\s\-\(\):]', '', text)
+            return bool(re.fullmatch(r'(1947|18003001947|18001801947|1800114477|14477)', stripped))
+
         # 1. First priority: look for line containing DOB/birth/जन्म keywords
         for line in ocr_lines:
+            if _is_helpline_only_line(line.text):
+                continue
             if re.search(r'(dob|birth|जन्म|तारीख|age)', line.text, re.I) and not re.search(r'(download|issue)', line.text, re.I):
                 d = extract_date_from_text(line.text)
                 if d and validate_date(d):
@@ -188,26 +205,33 @@ class BaseDocParser:
         anchor_idx = self._find_anchor(ocr_lines, label_key)
         if anchor_idx is not None:
             anchor_line = ocr_lines[anchor_idx]
-            d = extract_date_from_text(anchor_line.text)
-            if d and validate_date(d):
-                status = "ok" if anchor_line.confidence >= settings.field_confidence_threshold else "low_confidence"
-                return FieldResult(value=d, confidence=round(anchor_line.confidence, 4), status=status)
+            if not _is_helpline_only_line(anchor_line.text):
+                d = extract_date_from_text(anchor_line.text)
+                if d and validate_date(d):
+                    status = "ok" if anchor_line.confidence >= settings.field_confidence_threshold else "low_confidence"
+                    return FieldResult(value=d, confidence=round(anchor_line.confidence, 4), status=status)
 
             for idx in range(anchor_idx + 1, min(anchor_idx + 3, len(ocr_lines))):
                 sub_line = ocr_lines[idx]
+                if _is_helpline_only_line(sub_line.text):
+                    continue
                 d = extract_date_from_text(sub_line.text)
                 if d and validate_date(d):
                     status = "ok" if sub_line.confidence >= settings.field_confidence_threshold else "low_confidence"
                     return FieldResult(value=d, confidence=round(sub_line.confidence, 4), status=status)
 
-        # 3. Third priority: search all lines, explicitly excluding download/issue/valid/print
+        # 3. Third priority: search all lines — only full DD/MM/YYYY dates, NOT bare years
+        _FULL_DATE_PATTERN = re.compile(r'\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})\b')
         for line in ocr_lines:
             if re.search(r'(download|issue|valid|print|expiry)', line.text, re.I):
                 continue
-            d = extract_date_from_text(line.text)
-            if d and validate_date(d):
-                status = "ok" if line.confidence >= settings.field_confidence_threshold else "low_confidence"
-                return FieldResult(value=d, confidence=round(line.confidence, 4), status=status)
+            if _is_helpline_only_line(line.text) or _HELPLINE_PATTERN.search(line.text):
+                continue
+            if _FULL_DATE_PATTERN.search(line.text):
+                d = extract_date_from_text(line.text)
+                if d and validate_date(d):
+                    status = "ok" if line.confidence >= settings.field_confidence_threshold else "low_confidence"
+                    return FieldResult(value=d, confidence=round(line.confidence, 4), status=status)
 
         return FieldResult(value=None, confidence=0.0, status="not_found")
 

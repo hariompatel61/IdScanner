@@ -62,7 +62,11 @@ class AadhaarBackExtractor(BaseExtractor):
         if re.search(r'(agri\s*record|farmer\s*id|farmerid|kisan\s*id|kisan\s*card|agrirecord)', all_text, re.I):
             return None
 
-        is_back = bool(re.search(r'(address|पता|unique\s*identification|uidai|p\.o\.\s*box|help@uidai|www\.uidai|1947|s/o|s/0|d/o|d/0|w/o|w/0|c/o|c/0)', all_text, re.I))
+        is_back = bool(re.search(
+            r'(?:address|पता|पत्ता|निवासाचा|unique|unlque|ldontif|ldentif|identif|authorit|uidai|p[\.\s]*o[\.\s]*box|help[@ou0]|www[\.\-_]|1947|1800[\s\-]?[0-9]{3}|s/o|s/0|d/o|d/0|w/o|w/0|c/o|c/0|आत्मज|सुपुत्र|पुत्र|पत्नी|पती)',
+            all_text,
+            re.I
+        ))
         
         best_candidate = None
         highest_conf = 0.0
@@ -167,50 +171,153 @@ class VoterIDExtractor(BaseExtractor):
         return None
 
 class ABHAExtractor(BaseExtractor):
-    def __init__(self):
-        self.number_pattern = re.compile(r'\b\d{2}[\-\s]?\d{4}[\-\s]?\d{4}[\-\s]?\d{4}\b')
-        self.address_pattern = re.compile(r'\b[a-zA-Z0-9.\-_]+@[a-zA-Z0-9]+\b')
+    """
+    Extracts ABHA (Ayushman Bharat Health Account) identifiers.
+
+    Strict 'no guessing' rules:
+    - ABHA Address (health ID) must use a verified ABHA handle domain
+      (@abdm, @sbx, @hpr.abdm, @eua, @ndhm, @facility, @dev.abdm, @facility.sbx)
+      OR the document must contain explicit Ayushman/ABHA card context.
+    - Government/support emails (help@uidai, @gov.in, @nic.in, support@, info@,
+      contact@, helpdesk@) are NEVER valid ABHA addresses.
+    - If the document contains an Aadhaar back-side marker (Address:, S/O, P.O. Box,
+      help@uidai, 1947, www.uidai) WITHOUT explicit ABHA context, classification is rejected.
+    """
+
+    # Verified ABHA handle domains — only these are accepted as abha_address
+    _ABHA_DOMAINS = {
+        "abdm", "sbx", "hpr.abdm", "eua", "ndhm", "facility", "dev.abdm", "facility.sbx",
+    }
+
+    # Email domains / patterns that are known non-ABHA government / support emails
+    _REJECTED_EMAIL_DOMAINS = re.compile(
+        r'@(uidai|gov\.in|nic\.in|gmail\.com|yahoo\.com|yahoo\.co\.in|outlook\.com|hotmail\.com'
+        r'|incometax\.gov|election\.gov|epfo\.gov|esi\.gov|mca\.gov|mospi\.gov|mohfw\.gov'
+        r'|mahaonline\.gov|pmjay\.gov|nhm\.gov|nhp\.gov)',
+        re.I
+    )
+    _REJECTED_EMAIL_PREFIXES = re.compile(
+        r'^(help|support|info|contact|helpdesk|care|service|noreply|no-reply|admin|webmaster|postmaster)@',
+        re.I
+    )
+
+    # Keywords indicating explicit ABHA / Ayushman card context
+    _ABHA_CONTEXT_PATTERN = re.compile(
+        r'(ayushman\s*bharat|national\s*health\s*authority|abha|health\s*id|health\s*account'
+        r'|abdm|ndhm|आयुष्मान\s*भारत)',
+        re.I
+    )
+
+    # Aadhaar back-side markers that must NOT be on an ABHA card
+    _AADHAAR_BACK_MARKERS = re.compile(
+        r'(address\s*:|पता\s*:|unique\s*identification\s*authority|p\.o\.?\s*box'
+        r'|help@uidai|www\.uidai|s/o|d/o|w/o|c/o|\b1947\b)',
+        re.I
+    )
+
+    def _is_valid_abha_address(self, addr: str, has_abha_context: bool) -> bool:
+        """Return True only if addr is a genuine ABHA health handle."""
+        if not addr or "@" not in addr:
+            return False
+
+        addr_lower = addr.lower().strip()
+
+        # Hard reject: known government/support email domains
+        if self._REJECTED_EMAIL_DOMAINS.search(addr_lower):
+            return False
+
+        # Hard reject: known support email prefixes (help@, support@, info@, etc.)
+        if self._REJECTED_EMAIL_PREFIXES.match(addr_lower):
+            return False
+
+        # The domain part must be a verified ABHA handle OR we need explicit ABHA card context
+        _, _, domain = addr_lower.partition("@")
+        domain = domain.strip(".")
+
+        if domain in self._ABHA_DOMAINS:
+            return True
+
+        # If it's some other custom handle and the document has strong ABHA context, accept it
+        if has_abha_context and re.match(r'^[a-z0-9._\-]+$', domain):
+            return True
+
+        return False
 
     def extract(self, ocr_results: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        all_text = " ".join([l.get("text", "") for l in ocr_results])
+        # Text without email addresses to check for genuine card-level context
+        all_text_no_emails = re.sub(r'\S+@\S+', ' ', all_text)
+
+        # Check for Aadhaar back markers and genuine ABHA card context
+        has_aadhaar_back = bool(self._AADHAAR_BACK_MARKERS.search(all_text))
+        has_abha_context = bool(self._ABHA_CONTEXT_PATTERN.search(all_text_no_emails))
+
+        # If Aadhaar back markers are present without genuine card-level ABHA context, skip entirely
+        if has_aadhaar_back and not has_abha_context:
+            return None
+
+        # If Farmer ID context is present, skip
+        if re.search(r'(agri\s*record|farmer\s*id|farmerid|kisan\s*id|kisan\s*card)', all_text, re.I):
+            return None
+
         best_number = None
         highest_number_conf = 0.0
-        
         best_address = None
         highest_address_conf = 0.0
 
         for line in ocr_results:
-            text = line.get('text', '')
-            conf = line.get('confidence', 0.0)
-            
-            # Look for ABHA Number
+            text = line.get("text", "")
+            conf = line.get("confidence", 0.0)
+
+            # Look for 14-digit ABHA Number (XX-XXXX-XXXX-XXXX)
             num_match = self.number_pattern.search(text)
             if num_match:
-                # Normalize ABHA number to strict XX-XXXX-XXXX-XXXX
-                raw_num = re.sub(r'[^\d]', '', num_match.group(0))
+                raw_num = re.sub(r"[^\d]", "", num_match.group(0))
                 if len(raw_num) == 14:
                     norm_num = f"{raw_num[0:2]}-{raw_num[2:6]}-{raw_num[6:10]}-{raw_num[10:14]}"
                     if conf > highest_number_conf:
                         highest_number_conf = conf
                         best_number = norm_num
 
-            # Look for ABHA Address
-            addr_match = self.address_pattern.search(text)
+            # Look for ABHA Address — only valid ABHA handles
+            addr_match = re.search(r'\b[a-zA-Z0-9.\-_]+@[a-zA-Z0-9.\-_]+\b', text)
             if addr_match:
-                addr = addr_match.group(0).lower()
-                if conf > highest_address_conf:
-                    highest_address_conf = conf
-                    best_address = addr
+                addr_candidate = addr_match.group(0)
+                if self._is_valid_abha_address(addr_candidate, has_abha_context):
+                    if conf > highest_address_conf:
+                        highest_address_conf = conf
+                        best_address = addr_candidate.lower()
 
-        # Return whichever is found, prioritizing ABHA Number
-        if best_number or best_address:
+        # Only return if we have at minimum a 14-digit ABHA number, OR a valid ABHA address
+        # with strong ABHA context on the document
+        if best_number:
             return {
                 "document_type": "ABHA_NUMBER",
-                "identifier": best_number if best_number else best_address,
+                "identifier": best_number,
                 "abha_number": best_number,
                 "abha_address": best_address,
-                "confidence": min(c for c in [highest_number_conf, highest_address_conf] if c > 0)
+                "confidence": highest_number_conf,
             }
+
+        if best_address and has_abha_context:
+            return {
+                "document_type": "ABHA_NUMBER",
+                "identifier": best_address,
+                "abha_number": None,
+                "abha_address": best_address,
+                "confidence": highest_address_conf,
+            }
+
         return None
+
+    # Keep attribute for backward compatibility
+    @property
+    def number_pattern(self):
+        return self.__dict__.get("_number_pattern") or re.compile(r'\b\d{2}[\-\s]?\d{4}[\-\s]?\d{4}[\-\s]?\d{4}\b')
+
+    @number_pattern.setter
+    def number_pattern(self, value):
+        self.__dict__["_number_pattern"] = value
 
 class FarmerIDExtractor(BaseExtractor):
     def __init__(self):

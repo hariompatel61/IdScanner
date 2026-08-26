@@ -409,6 +409,67 @@ class TestAadhaarBackParser:
         assert result.fields["pincode"].value == "202394"
         assert result.overall_status == "ok"
 
+    def test_aadhaar_back_with_ocr_noisy_footer_and_header(self):
+        lines = [
+            _make_line("Unique ldontificalion Authority of india", y_mid=10),
+            _make_line("Address:", y_mid=30),
+            _make_line("S/O: Ramveer Singh, Davkora, Bulandshahr,", y_mid=50),
+            _make_line("Uttar Pradesh - 202394", y_mid=70),
+            _make_line("5276 1381 5535", y_mid=90),
+            _make_line("VID: 9103 6194 6407 4488", y_mid=110),
+            _make_line("1947", y_mid=130),
+            _make_line("helpouidai.govin", y_mid=150),
+            _make_line("www.uidai-gov.in", y_mid=170),
+            _make_line("P.O. Box No. 1947", y_mid=190),
+            _make_line("Bengaluru - 560001", y_mid=210),
+        ]
+        result = self.parser.extract_fields(lines)
+        assert result.fields["aadhaar_number"].value == "527613815535"
+        assert result.fields["relation_type"].value == "S/O"
+        assert result.fields["relation_name"].value == "Ramveer Singh"
+        assert result.fields["state"].value == "Uttar Pradesh"
+        assert result.fields["pincode"].value == "202394"
+        assert result.fields["address"].value is not None
+        assert "Ramveer Singh" in result.fields["address"].value
+        assert "Unique" not in result.fields["address"].value
+        assert "ldontificalion" not in result.fields["address"].value
+        assert "helpouidai" not in result.fields["address"].value
+        assert "Bengaluru" not in result.fields["address"].value
+        assert "560001" not in result.fields["address"].value
+        assert "1947" not in result.fields["address"].value
+        assert result.overall_status == "ok"
+
+    def test_aadhaar_back_rejects_fragment_and_footer_leak(self):
+        lines = [
+            _make_line("Unique ldontificalion Authority of india", y_mid=10),
+            _make_line("3R-202394", y_mid=30),
+            _make_line("helpouidai.govin", y_mid=50),
+        ]
+        result = self.parser.extract_fields(lines)
+        # Address must be rejected under strict 'no guessing' rule
+        assert result.fields["address"].value is None
+        assert result.overall_status == "rescan_required"
+
+    def test_aadhaar_back_rejects_address_with_footer_text(self):
+        lines = [
+            _make_line("Address: Unique Identification Authority of India, 1947, help@uidai", y_mid=30),
+            _make_line("5276 1381 5535", y_mid=50),
+        ]
+        result = self.parser.extract_fields(lines)
+        assert result.fields["address"].value is None
+
+    def test_aadhaar_back_low_confidence_returns_none(self):
+        lines = [
+            _make_line("Address:", y_mid=30, confidence=0.50),
+            _make_line("S/O: Ramveer Singh, Davkora, Bulandshahr,", y_mid=50, confidence=0.50),
+            _make_line("Uttar Pradesh - 202394", y_mid=70, confidence=0.50),
+            _make_line("5276 1381 5535", y_mid=90, confidence=0.50),
+        ]
+        result = self.parser.extract_fields(lines)
+        assert result.fields["address"].value is None
+        assert result.fields["aadhaar_number"].value is None
+        assert result.overall_status == "rescan_required"
+
 
 # ── Cross-Parser Tests ──────────────────────────────────────────
 
@@ -426,4 +487,133 @@ class TestParserInterface:
     def test_has_mandatory_fields(self, parser_class):
         parser = parser_class()
         assert len(parser.MANDATORY_FIELDS) > 0
+
+
+# ── Universal "No Guessing" Strict Validation Tests ──────────────
+
+class TestUniversalNoGuessingValidation:
+    """
+    Verify that no parser ever guesses, fabricates, or cross-contaminates data:
+    1. Helpline 1947 is NEVER extracted as a DOB year.
+    2. Address lines (with S/O, Village, Davkora, Bulandshahr) are NEVER extracted as person names.
+    3. Authority headers (Unique Identification Authority of India, etc.) are NEVER extracted as person names.
+    """
+
+    def test_1947_never_extracted_as_dob_in_base_or_parsers(self):
+        """Line with '1947' helpline must never be treated as birth year in any parser."""
+        lines = [
+            _make_line("Unique Identification Authority of India", 0.95, y_mid=20),
+            _make_line("help@uidai.gov.in", 0.92, y_mid=50),
+            _make_line("1947", 0.96, y_mid=80),
+        ]
+        
+        # Test ABHA parser
+        abha_res = ABHAParser().extract_fields(lines)
+        assert abha_res.fields["dob"].value is None, f"ABHAParser extracted 1947 as DOB: {abha_res.fields['dob'].value}"
+
+        # Test Aadhaar Front parser
+        aadhaar_res = AadhaarParser().extract_fields(lines)
+        assert aadhaar_res.fields["dob"].value is None, f"AadhaarParser extracted 1947 as DOB: {aadhaar_res.fields['dob'].value}"
+
+        # Test PAN parser
+        pan_res = PANParser().extract_fields(lines)
+        assert pan_res.fields["dob"].value is None, f"PANParser extracted 1947 as DOB: {pan_res.fields['dob'].value}"
+
+    def test_relation_address_string_never_extracted_as_name_in_abha(self):
+        """Address/relation text like 'S O Ramveer Singh Davkora Bulandshahr' must never become ABHA Name."""
+        lines = [
+            _make_line("Ayushman Bharat Health Account", 0.95, y_mid=20),
+            _make_line("S O Ramveer Singh Davkora Bulandshahr", 0.92, y_mid=60),
+            _make_line("1947", 0.90, y_mid=90),
+        ]
+        abha_res = ABHAParser().extract_fields(lines)
+        assert abha_res.fields["name"].value is None, f"ABHAParser accepted relation/address as name: {abha_res.fields['name'].value}"
+
+    def test_authority_header_never_extracted_as_name_in_abha(self):
+        """'Unique Identification Authority of India' must never become ABHA Name."""
+        lines = [
+            _make_line("Unique Identification Authority of India", 0.95, y_mid=20),
+            _make_line("ABHA Number: 12-3456-7890-1234", 0.97, y_mid=60),
+        ]
+        abha_res = ABHAParser().extract_fields(lines)
+        assert abha_res.fields["name"].value is None, f"ABHAParser accepted authority header as name: {abha_res.fields['name'].value}"
+
+    def test_relation_address_string_never_extracted_as_name_in_aadhaar_front(self):
+        """Address/relation text must never become Aadhaar cardholder name."""
+        lines = [
+            _make_line("Address:", 0.95, y_mid=20),
+            _make_line("S/O: Ramveer Singh, Davkora, Bulandshahr", 0.92, y_mid=50),
+            _make_line("5276 1381 5535", 0.98, y_mid=80),
+        ]
+        aadhaar_res = AadhaarParser().extract_fields(lines)
+        assert aadhaar_res.fields["name"].value is None, f"AadhaarParser accepted back address as front name: {aadhaar_res.fields['name'].value}"
+
+    def test_aadhaar_back_comma_relation_and_wityofindia_rejection(self):
+        """
+        Regression test for req_44103b8d5bba:
+        - 'S/O, Paveer Singh' with comma must extract relation_type='S/O' and relation_name='Paveer Singh'.
+        - Distorted footer string 'wityofindia' must NEVER be extracted as M/O / wityofindia.
+        """
+        lines = [
+            _make_line("Unique Identification Authority of India", 0.95, y_mid=20),
+            _make_line("Address: S/O, Paveer Singh, Davkora, Bulandshahr, Uttar Pradesh - 202394", 0.92, y_mid=50),
+            _make_line("5276 1381 5535", 0.98, y_mid=80),
+            _make_line("wityofindia", 0.85, y_mid=110),
+        ]
+        res = AadhaarBackParser().extract_fields(lines)
+        assert res.fields["relation_type"].value == "S/O", f"Expected S/O but got {res.fields['relation_type'].value}"
+        assert res.fields["relation_name"].value == "Paveer Singh", f"Expected Paveer Singh but got {res.fields['relation_name'].value}"
+        assert "wityofindia" not in (res.fields["address"].value or "")
+
+    def test_voter_id_sname_label_artifact_stripped(self):
+        """
+        Regression test for req_29da6895c64c:
+        - 'Father'sName NAVEEN KUMAR JHA' or 'SName NAVEEN KUMAR JHA' must extract 'NAVEEN KUMAR JHA'.
+        - Must never extract 'SName NAVEEN KUMAR JHA'.
+        """
+        lines = [
+            _make_line("Elector's Name: SHASHIRANJAN KUMAR", 0.95, y_mid=30),
+            _make_line("Father'sName NAVEEN KUMAR JHA", 0.92, y_mid=60),
+            _make_line("UBV2991586", 0.98, y_mid=90),
+        ]
+        res = VoterIDParser().extract_fields(lines)
+        assert res.fields["name"].value == "SHASHIRANJAN KUMAR"
+        assert res.fields["relation_type"].value == "Father"
+        assert res.fields["relation_name"].value == "NAVEEN KUMAR JHA", f"Expected 'NAVEEN KUMAR JHA' but got '{res.fields['relation_name'].value}'"
+
+        # Also test with literal OCR leftover 'SName NAVEEN KUMAR JHA'
+        lines2 = [
+            _make_line("Name: SHASHIRANJAN KUMAR", 0.95, y_mid=30),
+            _make_line("Father: SName NAVEEN KUMAR JHA", 0.92, y_mid=60),
+            _make_line("UBV2991586", 0.98, y_mid=90),
+        ]
+        res2 = VoterIDParser().extract_fields(lines2)
+        assert res2.fields["relation_name"].value == "NAVEEN KUMAR JHA"
+
+    def test_aadhaar_back_trailing_3r_pincode_fragment_stripped(self):
+        """
+        Regression test for req_f9fea3acaca9:
+        - Input address has trailing duplicate Hindi/OCR pincode fragment '3R-202394'
+          and unspaced words 'RamveerSingh', 'UttarPradesh-202394'.
+        - Verifies '3R-202394' is stripped and address is normalized to:
+          'S/O: Ramveer Singh, Davkora, Bulandshahr, Uttar Pradesh - 202394'.
+        """
+        lines = [
+            _make_line("Unique Identification Authority of India", 0.95, y_mid=20),
+            _make_line("Address: S/O:RamveerSingh, Davkora, Bulandshahr,", 0.92, y_mid=50),
+            _make_line("UttarPradesh-202394", 0.92, y_mid=70),
+            _make_line("3R-202394", 0.85, y_mid=90),
+            _make_line("5276 1381 5535", 0.98, y_mid=110),
+        ]
+        res = AadhaarBackParser().extract_fields(lines)
+        assert res.fields["relation_type"].value == "S/O"
+        assert res.fields["relation_name"].value == "Ramveer Singh"
+        assert res.fields["state"].value == "Uttar Pradesh"
+        assert res.fields["pincode"].value == "202394"
+        assert res.fields["address"].value == "S/O: Ramveer Singh, Davkora, Bulandshahr, Uttar Pradesh - 202394"
+        assert "3R" not in res.fields["address"].value
+        assert res.overall_status == "ok"
+
+
+
 

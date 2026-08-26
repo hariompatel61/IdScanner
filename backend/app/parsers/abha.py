@@ -37,9 +37,28 @@ class ABHAParser(BaseDocParser):
 
         return self._build_result(fields)
 
+    # Relation prefix lines to always skip
+    _RELATION_PREFIX_RE = re.compile(
+        r'^(?:S/O|S/0|D/O|D/0|W/O|W/0|C/O|C/0|F/O|M/O|Son\s*of|Daughter\s*of|Wife\s*of|Care\s*of'
+        r'|\u0906\u0924\u094d\u092e\u091c|\u0938\u0941\u092a\u0941\u0924\u094d\u0930|\u092a\u0941\u0924\u094d\u0930'
+        r'|\u092a\u0924\u094d\u0928\u0940|\u092e\u093e\u0924\u093e|\u092a\u093f\u0924\u093e)[\s:\-\.]*',
+        re.I
+    )
+    # Authority/header line markers to always skip
+    _HEADER_LINE_RE = re.compile(
+        r'(unique\s*identification|ayushman\s*bharat|national\s*health|government\s*of\s*india'
+        r'|income\s*tax|election\s*commission|\u092d\u093e\u0930\u0924\u0940\u092f\s*\u0935\u093f\u0936\u093f\u0937\u094d\u091f'
+        r'|\u092d\u093e\u0930\u0924\s*\u0938\u0930\u0915\u093e\u0930)',
+        re.I
+    )
+
     def _extract_abha_name(self, ocr_lines: List[OCRLine]) -> FieldResult:
         """
         Extract name from ABHA card by finding Name anchor and evaluating the best person name candidate.
+        Strict 'no guessing' rules:
+        - Rejects relation prefix lines (S/O, D/O, W/O, C/O etc.)
+        - Rejects UIDAI / government authority header lines
+        - Validates every candidate with validate_name() which rejects address/header/relation contamination
         """
         # 1. Look for Name anchor line
         name_anchor_idx = None
@@ -58,6 +77,12 @@ class ABHAParser(BaseDocParser):
                     text = candidate_line.text.strip()
                     # Skip ABHA number, header, or labels
                     if re.search(r'(abha|account|health|gender|date|birth|mobile|instruction|toll-free|cop|copy|sample)', text, re.I):
+                        continue
+                    # Skip relation prefix lines (S/O, D/O, W/O etc.)
+                    if self._RELATION_PREFIX_RE.match(text):
+                        continue
+                    # Skip authority header lines
+                    if self._HEADER_LINE_RE.search(text):
                         continue
                     cleaned = clean_name_text(text)
                     if validate_name(cleaned):
@@ -79,6 +104,12 @@ class ABHAParser(BaseDocParser):
                 continue
             if re.search(r'(ayushman|bharat|health|account|national|authority|abha|instructions|toll-free|digital|records|gender|date|birth|mobile|cop|copy|sample)', text, re.I):
                 continue
+            # Skip relation prefix lines (S/O, D/O, W/O etc.)
+            if self._RELATION_PREFIX_RE.match(text):
+                continue
+            # Skip authority header lines
+            if self._HEADER_LINE_RE.search(text):
+                continue
             if re.search(r'\d', text) or '@' in text:
                 continue
             cleaned = clean_name_text(text)
@@ -93,6 +124,7 @@ class ABHAParser(BaseDocParser):
             return FieldResult(value=best[2], confidence=round(best[1], 4), status=status)
 
         return FieldResult(value=None, confidence=0.0, status="not_found")
+
 
     def _extract_mobile(self, ocr_lines: List[OCRLine]) -> FieldResult:
         """

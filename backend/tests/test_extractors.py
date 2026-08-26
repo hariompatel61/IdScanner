@@ -180,3 +180,112 @@ class TestExtractorRegression:
         assert validate_verhoeff("abc") == False
 
 
+# ── ABHA Misclassification Prevention Tests ─────────────────────
+# These tests verify the root cause fix: Aadhaar back images containing
+# help@uidai and 1947 must NEVER be misclassified as ABHA_NUMBER.
+
+class TestABHAExtractorDisambiguation:
+    """
+    Critical regression tests for ABHA misclassification.
+    
+    Failure scenario (fixed):
+    - Aadhaar back scan has 'help@uidai.gov.in' and '1947' printed on it.
+    - Old ABHAExtractor matched 'help@uidai' as abha_address with confidence 0.919.
+    - Document was classified as ABHA_NUMBER instead of AADHAAR_CARD_BACK.
+    """
+
+    def setup_method(self):
+        self.abha_ext = ABHAExtractor()
+
+    def test_aadhaar_back_with_help_at_uidai_not_classified_as_abha(self):
+        """
+        CRITICAL: Aadhaar back containing 'help@uidai' and '1947' must NEVER be
+        classified as ABHA_NUMBER. This was the root cause of req_abc872354630 failure.
+        """
+        aadhaar_back_ocr = [
+            {"text": "Unique Identification Authority of India", "confidence": 0.95},
+            {"text": "भारतीय विशिष्ट पहचान प्राधिकरण", "confidence": 0.93},
+            {"text": "Address:", "confidence": 0.94},
+            {"text": "S/O: Ramveer Singh, Davkora", "confidence": 0.92},
+            {"text": "Bulandshahr, Uttar Pradesh - 202394", "confidence": 0.91},
+            {"text": "5276 1381 5535", "confidence": 0.97},
+            {"text": "help@uidai.gov.in", "confidence": 0.92},
+            {"text": "www.uidai.gov.in", "confidence": 0.90},
+            {"text": "1947", "confidence": 0.91},
+        ]
+        result = self.abha_ext.extract(aadhaar_back_ocr)
+        # Must NOT be classified as ABHA
+        assert result is None, (
+            f"Aadhaar back was misclassified as ABHA_NUMBER: {result}"
+        )
+
+    def test_help_at_uidai_is_never_valid_abha_address(self):
+        """help@uidai and help@uidai.gov.in must NEVER be returned as abha_address."""
+        for email in ["help@uidai", "help@uidai.gov.in", "support@uidai.gov.in", "info@uidai.gov.in"]:
+            result = self.abha_ext.extract([
+                {"text": email, "confidence": 0.99},
+            ])
+            assert result is None, f"'{email}' incorrectly accepted as ABHA address: {result}"
+
+    def test_government_support_emails_rejected(self):
+        """Government and support emails must never be classified as ABHA addresses."""
+        rejected_emails = [
+            "help@uidai.gov.in",
+            "support@uidai.gov.in",
+            "info@epfo.gov.in",
+            "contact@election.gov.in",
+            "admin@nic.in",
+            "helpdesk@nhm.gov",
+            "noreply@mahaonline.gov",
+        ]
+        for email in rejected_emails:
+            result = self.abha_ext.extract([{"text": email, "confidence": 0.99}])
+            assert result is None, f"'{email}' was wrongly accepted as ABHA: {result}"
+
+    def test_valid_abha_handle_abdm_accepted(self):
+        """Valid ABHA handles (@abdm) must be accepted when ABHA card context is present."""
+        result = self.abha_ext.extract([
+            {"text": "Ayushman Bharat Health Account", "confidence": 0.97},
+            {"text": "john.doe@abdm", "confidence": 0.95},
+        ])
+        assert result is not None
+        assert result["document_type"] == "ABHA_NUMBER"
+        assert result["abha_address"] == "john.doe@abdm"
+
+    def test_valid_abha_14digit_number_accepted(self):
+        """Valid 14-digit ABHA number must always be accepted."""
+        result = self.abha_ext.extract([
+            {"text": "12-3456-7890-1234", "confidence": 0.99},
+        ])
+        assert result is not None
+        assert result["document_type"] == "ABHA_NUMBER"
+        assert result["abha_number"] == "12-3456-7890-1234"
+
+    def test_abha_address_without_context_rejected(self):
+        """An unknown email handle without explicit ABHA context must be rejected."""
+        result = self.abha_ext.extract([
+            {"text": "john.doe@someclinic.com", "confidence": 0.95},
+        ])
+        assert result is None, f"Unknown email without ABHA context was accepted: {result}"
+
+    def test_aadhaar_back_markers_block_abha_classification(self):
+        """If Aadhaar back-side markers are present without ABHA context, skip."""
+        result = self.abha_ext.extract([
+            {"text": "S/O Ramveer Singh", "confidence": 0.95},
+            {"text": "Bulandshahr, Uttar Pradesh", "confidence": 0.94},
+            {"text": "john.doe@abdm", "confidence": 0.90},  # Even a valid ABHA handle
+        ])
+        # Aadhaar back marker (S/O) without ABHA context → should be rejected
+        assert result is None, f"Aadhaar back with S/O marker incorrectly classified as ABHA: {result}"
+
+    def test_real_abha_card_with_aadhaar_back_markers_and_abha_context(self):
+        """If both Aadhaar back markers AND ABHA context exist, ABHA should still win."""
+        # Edge case: someone has a combined card (unlikely but robust test)
+        result = self.abha_ext.extract([
+            {"text": "Ayushman Bharat Health Account", "confidence": 0.97},
+            {"text": "ABHA Number: 12-3456-7890-1234", "confidence": 0.96},
+            {"text": "S/O Ramesh Kumar", "confidence": 0.90},  # Back marker, but ABHA context wins
+        ])
+        assert result is not None
+        assert result["document_type"] == "ABHA_NUMBER"
+        assert result["abha_number"] == "12-3456-7890-1234"
