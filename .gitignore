@@ -70,3 +70,17 @@ backend/logs/*.log
 
 # Docker Artifacts
 .dockerignore
+
+# Test & Sample Images (Private / Sensitive ID documents)
+test_image/
+test_images/
+*.jpeg
+*.jpg
+*.png
+!frontend/public/*.png
+!frontend/public/*.jpg
+!frontend/public/*.jpeg
+!frontend/src/assets/*.png
+!frontend/src/assets/*.jpg
+!frontend/src/assets/*.svg
+
