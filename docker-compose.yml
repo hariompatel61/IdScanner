@@ -21,31 +21,6 @@ services:
       start_period: 60s
     volumes:
       - ./backend:/app
-    depends_on:
-      - scanner-ocr
-
-  scanner-ocr:
-    build:
-      context: ./ocr_worker
-      dockerfile: Dockerfile
-    container_name: scanner-ocr
-    restart: unless-stopped
-    env_file:
-      - .env
-    expose:
-      - "8001"
-    deploy:
-      resources:
-        limits:
-          memory: 4G
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8001/health" ]
-      interval: 10s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-    volumes:
-      - ./ocr_worker/app:/app/app
 
   scanner-web:
     build:
@@ -60,3 +35,4 @@ services:
     depends_on:
       scanner-api:
         condition: service_healthy
+

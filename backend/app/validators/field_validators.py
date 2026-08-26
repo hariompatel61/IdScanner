@@ -75,33 +75,103 @@ PRIMARY_SURNAMES = [
     "KUMAR", "PRASAD", "CHANDRA", "PRAKASH", "LAL", "RAM", "DEV", "RAJ", "PAL", "JHA"
 ]
 
+# Pre-sorted surname tuple for recursive unspaced suffix splitting
+_SORTED_PRIMARY_SURNAMES = tuple(sorted(PRIMARY_SURNAMES, key=len, reverse=True))
+
+# Pre-compiled Module Patterns
+_ANCHOR_CLEAN_LEADING_RE = re.compile(r'^[^\w\s]+')
+_ANCHOR_MATCH_RE = re.compile(
+    r'^(?:[a-zA-Z\u0900-\u097F]{1,5}[\/\-:\.]\s*)?(?:elector(?:\'s)?(?:\s*name|\w{0,3})?|mother(?:\'s)?(?:\s*name|\w{0,3})?|father(?:\'s)?(?:\s*name|\w{0,3})?|husband(?:\'s)?(?:\s*name|\w{0,3})?|relation(?:\s*name)?|name|नाम|नाव|मतदाराचे(?:\s*नाव)?|आईचे(?:\s*नाव)?|माता(?:\s*का\s*नाम)?|पिता(?:\s*का\s*नाम)?|पती(?:\s*का\s*नाम)?|पतीचे(?:\s*नाव)?|वडिलांचे(?:\s*नाव)?|signature|हस्ताक्षर|dob|date\s*of\s*birth|sex|gender)$',
+    re.I
+)
+_NON_WORD_SPACES_RE = re.compile(r'[^\w\s]')
+_DELIMITER_SPACING_RE = re.compile(r'([:\/\-=\.,_+’\'"‘“])')
+_LABEL_PREFIX_RE = re.compile(
+    r'^(?:[a-zA-Z\u0900-\u097F]{1,5}[\/\-:\.]\s*)?(?:elector(?:\s*[\'’]?\s*s)?(?:\s*name|\w{0,3})?|mother(?:\s*[\'’]?\s*s)?(?:\s*name|\w{0,3})?|father(?:\s*[\'’]?\s*s)?(?:\s*name|\w{0,3})?|husband(?:\s*[\'’]?\s*s)?(?:\s*name|\w{0,3})?|relation(?:\s*name)?|name|नाम|नाव|मतदाराचे(?:\s*नाव)?|आईचे(?:\s*नाव)?|माता(?:\s*का\s*नाम)?|पिता(?:\s*का\s*नाम)?|पती(?:\s*का\s*नाम)?|पतीचे(?:\s*नाव)?|वडिलांचे(?:\s*नाव)?|other|s/o|w/o|d/o|m/o|c/o|son\s*of|wife\s*of|daughter\s*of|mother\s*of|s\s*name|sname|fname|mname|hname)\s*[:\-\/\.=\s]*',
+    re.I
+)
+_PUNCTUATION_RE = re.compile(r'[:\._\-/+=’\'"‘“]+')
+_CAMEL_CASE_RE = re.compile(r'([a-z])([A-Z])')
+_NON_LETTER_RE = re.compile(r'[^a-zA-Z\u0900-\u097F\s]')
+_WHITESPACE_RE = re.compile(r'\s+')
+_DIGIT_RE = re.compile(r'\d')
+_DISTORTED_AUTHORITY_RE = re.compile(r'(?:wity|ofindia|oftndia|oflndia|authorityof|identificalion|authorityoftndia)', re.I)
+_DATE_FULL_RE = re.compile(r'^(\d{1,2})/(\d{1,2})/(\d{4})$')
+_YEAR_ONLY_RE = re.compile(r'^(\d{4})$')
+_DATE_SEARCH_RE = re.compile(r'\b(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})\b')
+_YEAR_SEARCH_RE = re.compile(r'\b(19\d{2}|20[0-2]\d)\b')
+_DIGITS_ONLY_RE = re.compile(r'[^\d]')
+_GENDER_ANCHOR_RE = re.compile(r'(?:gender|sex|लिंग|gander|gendar)[\s:\.\/=\-]+([A-Za-z]+|[\u0900-\u097F]+)', re.I)
+_GENDER_FEMALE_RE = re.compile(r'(?:female|famale|महिला|स्त्री)', re.I)
+_GENDER_TRANS_RE = re.compile(r'(?:transgender|किन्नर|तृतीयपंथी)', re.I)
+_GENDER_MALE_RE = re.compile(r'(?:male|malo|पुरुष|पुरूष)', re.I)
+_GENDER_F_CHAR_RE = re.compile(r'\b[Ff]\b')
+_GENDER_M_CHAR_RE = re.compile(r'\b[Mm]\b')
+_MOBILE_CLEAN_RE = re.compile(r'[\s\-\+]')
+_MOBILE_MATCH_RE = re.compile(r'^[6-9]\d{9}$')
+_PINCODE_MATCH_RE = re.compile(r'^[1-9][0-9]{5}$')
+_PINCODE_SEARCH_RE = re.compile(r'\b([1-9][0-9]{5})\b')
+_WORD_TOKENS_RE = re.compile(r'[a-zA-Z\u0900-\u097F]{3,}')
+_ADDRESS_LABEL_RE = re.compile(r'^(?:address|पता|पत्ता|निवासाचा\s*पत्ता)[\s:\-\.]*$', re.I)
+_ADDRESS_PIN_ONLY_RE = re.compile(r'^[A-Za-z0-9\s\-_,.]*?\b\d{6}\b$')
+_ADDRESS_FOOTER_LEAK_RE = re.compile(
+    r'(?:unique|unlque|uniqe|ldontif|ldentif|identif)\w*[\s\-_]*(?:authorit|authorlt|authorty)\w*|'
+    r'unique\s*identification|'
+    r'authority\s*of\s*india|'
+    r'भारतीय\s*विशिष्ट\s*पहचान\s*प्राधिकरण|'
+    r'विशिष्ट\s*पहचान|'
+    r'help[@ou0\.\-_\s]*uidai|'
+    r'www[\.\-_\s]*uidai|'
+    r'uidai[\.\-_\s]*gov|'
+    r'p[\.\s]*o[\.\s]*box|'
+    r'\b1947\b|'
+    r'1800[\s\-]?[0-9]{3}[\s\-]?[0-9]{4}|'
+    r'bengaluru[\s\-]*560\s*001|'
+    r'bangalore[\s\-]*560\s*001|'
+    r'gpo\s*bangalore|'
+    r'gpo\s*bengaluru|'
+    r'\bvid\b|'
+    r'signature\s*valid|'
+    r'digitally\s*signed',
+    re.I
+)
+
+_LABEL_KEYWORDS_SET = {
+    "name", "father", "fathers", "father's", "husband", "husbands", "husband's",
+    "mother", "mothers", "mother's", "signature", "elector", "electors", "elector's",
+    "photo", "identity", "card", "department", "government", "india", "आयोग", "निवडणूक",
+    "ओळख", "पत्र", "नाव", "आईचे", "वडिलांचे", "पतीचे", "मतदाराचे", "other", "relation"
+}
+
+_LABEL_PREFIXES_TUPLE = ("mother", "father", "husband", "elector", "signat", "departm", "relation", "identit")
+
 
 def is_pure_label_line(text: str) -> bool:
     """
-    Returns True if the text is purely an anchor/label line (like 'Name', 'Father\'s Name', 'Mother\'s Name', 'Mothersp').
+    Returns True if the text is purely an anchor/label line.
     """
     if not text:
         return True
 
-    cleaned = re.sub(r'^[^\w\s]+', '', text.strip())
-    if re.search(r'^(?:[a-zA-Z\u0900-\u097F]{1,5}[\/\-:\.]\s*)?(?:elector(?:\'s)?(?:\s*name|\w{0,3})?|mother(?:\'s)?(?:\s*name|\w{0,3})?|father(?:\'s)?(?:\s*name|\w{0,3})?|husband(?:\'s)?(?:\s*name|\w{0,3})?|relation(?:\s*name)?|name|नाम|नाव|मतदाराचे(?:\s*नाव)?|आईचे(?:\s*नाव)?|माता(?:\s*का\s*नाम)?|पिता(?:\s*का\s*नाम)?|पती(?:\s*का\s*नाम)?|पतीचे(?:\s*नाव)?|वडिलांचे(?:\s*नाव)?|signature|हस्ताक्षर|dob|date\s*of\s*birth|sex|gender)$', cleaned, re.I):
+    cleaned = _ANCHOR_CLEAN_LEADING_RE.sub('', text.strip())
+    if _ANCHOR_MATCH_RE.search(cleaned):
         return True
 
-    words = [w.lower() for w in re.sub(r'[^\w\s]', ' ', text).split()]
-    label_keywords = {"name", "father", "fathers", "father's", "husband", "husbands", "husband's", "mother", "mothers", "mother's", "signature", "elector", "electors", "elector's", "photo", "identity", "card", "department", "government", "india", "आयोग", "निवडणूक", "ओळख", "पत्र", "नाव", "आईचे", "वडिलांचे", "पतीचे", "मतदाराचे", "other", "relation"}
-    if all(w in label_keywords or w in HEADER_WORDS or any(w.startswith(k) for k in ("mother", "father", "husband", "elector", "signat", "departm", "relation", "identit")) for w in words):
+    words = [w.lower() for w in _NON_WORD_SPACES_RE.sub(' ', text).split()]
+    if all(w in _LABEL_KEYWORDS_SET or w in HEADER_WORDS or any(w.startswith(k) for k in _LABEL_PREFIXES_TUPLE) for w in words):
         return True
 
     return False
 
 
 def split_word_suffixes(word: str) -> List[str]:
-    """Recursively splits unspaced word suffixes from right to left."""
+    """Recursively splits unspaced word suffixes from right to left using pre-sorted surnames."""
     if len(word) <= 3 or not word.isalpha():
         return [word]
 
-    for suffix in sorted(PRIMARY_SURNAMES, key=len, reverse=True):
-        if word.upper().endswith(suffix) and len(word) > len(suffix):
+    word_upper = word.upper()
+    for suffix in _SORTED_PRIMARY_SURNAMES:
+        if word_upper.endswith(suffix) and len(word) > len(suffix):
             prefix = word[:-len(suffix)]
             if len(prefix) >= 2:
                 return split_word_suffixes(prefix) + [word[-len(suffix):]]
@@ -112,38 +182,27 @@ def split_word_suffixes(word: str) -> List[str]:
 def clean_name_text(text: str) -> str:
     """
     Advanced Name, Middle Name & Surname cleaner.
-    1. Splits delimiters (dots, colons, slashes, hyphens, quotes) -> 'John.David.Smith' -> 'John David Smith'
-    2. Strips bilingual label prefixes -> "Elector's Name: ROHTASH" -> "ROHTASH", "Father'sName NAVEEN" -> "NAVEEN"
-    3. Splits camelCase boundaries -> 'AaravSharma' -> 'Aarav Sharma'
-    4. Recursively splits unspaced surname boundaries without corrupting non-compound names (e.g. Ramesh -> Ramesh)
-    5. Strips leading leftover label tokens (e.g. 'sname', 'name', 's', 'father')
-    6. Normalizes whitespace cleanly
     """
     if not text or is_pure_label_line(text):
         return ""
 
-    # 1. Delimiter spacing: e.g. "NAME:ROHTASH", "Father's Name" -> "NAME : ROHTASH", "Father ' s Name"
-    formatted = re.sub(r'([:\/\-=\.,_+’\'"‘“])', r' \1 ', text)
+    # 1. Delimiter spacing
+    formatted = _DELIMITER_SPACING_RE.sub(r' \1 ', text)
 
     # 2. Strip comprehensive bilingual label prefixes
-    cleaned = re.sub(
-        r'^(?:[a-zA-Z\u0900-\u097F]{1,5}[\/\-:\.]\s*)?(?:elector(?:\s*[\'’]?\s*s)?(?:\s*name|\w{0,3})?|mother(?:\s*[\'’]?\s*s)?(?:\s*name|\w{0,3})?|father(?:\s*[\'’]?\s*s)?(?:\s*name|\w{0,3})?|husband(?:\s*[\'’]?\s*s)?(?:\s*name|\w{0,3})?|relation(?:\s*name)?|name|नाम|नाव|मतदाराचे(?:\s*नाव)?|आईचे(?:\s*नाव)?|माता(?:\s*का\s*नाम)?|पिता(?:\s*का\s*नाम)?|पती(?:\s*का\s*नाम)?|पतीचे(?:\s*नाव)?|वडिलांचे(?:\s*नाव)?|other|s/o|w/o|d/o|m/o|c/o|son\s*of|wife\s*of|daughter\s*of|mother\s*of|s\s*name|sname|fname|mname|hname)\s*[:\-\/\.=\s]*',
-        '',
-        formatted,
-        flags=re.I
-    ).strip()
+    cleaned = _LABEL_PREFIX_RE.sub('', formatted).strip()
 
     if not cleaned or is_pure_label_line(cleaned):
         return ""
 
-    # 3. Replace colons, dots, underscores, slashes, hyphens, quotes with spaces
-    cleaned = re.sub(r'[:\._\-/+=’\'"‘“]+', ' ', cleaned)
+    # 3. Replace delimiters with spaces
+    cleaned = _PUNCTUATION_RE.sub(' ', cleaned)
 
-    # 4. Split camelCase/PascalCase: e.g. "AaravSharma" -> "Aarav Sharma", "SName" -> "S Name"
-    cleaned = re.sub(r'([a-z])([A-Z])', r'\1 \2', cleaned)
+    # 4. Split camelCase/PascalCase
+    cleaned = _CAMEL_CASE_RE.sub(r'\1 \2', cleaned)
 
-    # 5. Remove any leftover non-letter characters
-    cleaned = re.sub(r'[^a-zA-Z\u0900-\u097F\s]', ' ', cleaned)
+    # 5. Remove non-letter characters
+    cleaned = _NON_LETTER_RE.sub(' ', cleaned)
 
     # 6. Suffix Recursive Splitter on unspaced words
     tokens = cleaned.split()
@@ -151,23 +210,17 @@ def clean_name_text(text: str) -> str:
     for token in tokens:
         refined_tokens.extend(split_word_suffixes(token))
 
-    # 7. Strip leading leftover label tokens (e.g. SName, Name, S, Father)
+    # 7. Strip leading leftover label tokens
     while refined_tokens and refined_tokens[0].lower() in LEADING_LABEL_TOKENS:
         refined_tokens.pop(0)
 
     # 8. Normalize whitespace
-    return re.sub(r'\s+', ' ', " ".join(refined_tokens)).strip()
+    return _WHITESPACE_RE.sub(' ', " ".join(refined_tokens)).strip()
 
 
 def validate_name(value: str) -> bool:
     """
     Comprehensive name validation for ID documents.
-    Strict 'no guessing' rules:
-    - Rejects strings containing relation prefixes (S/O, D/O, W/O etc.)
-    - Rejects strings containing government/authority header words or distorted OCR headers
-    - Rejects strings containing address stopwords
-    - Rejects email addresses or strings with digits
-    - Rejects single leftover label words (sname, name, father, etc.)
     """
     if not value or len(value.strip()) < 2 or is_pure_label_line(value):
         return False
@@ -175,7 +228,6 @@ def validate_name(value: str) -> bool:
     if '@' in value:
         return False
 
-    # Reject if the text starts with a relation prefix (S/O, D/O etc.)
     if RELATION_PREFIX_PATTERN.match(value.strip()):
         return False
 
@@ -184,33 +236,26 @@ def validate_name(value: str) -> bool:
         return False
 
     words = [w.lower() for w in cleaned.split()]
-    label_keywords = {"name", "sname", "fname", "mname", "hname", "father", "fathers", "father's",
-                      "husband", "husbands", "husband's", "mother", "mothers", "mother's",
-                      "signature", "elector", "electors", "elector's", "department",
-                      "other", "relation", "photo", "identity", "card"}
 
-    if all(w in label_keywords or any(w.startswith(k) for k in ("mother", "father", "husband", "elector", "signat", "departm", "relation")) for w in words):
+    if all(w in _LABEL_KEYWORDS_SET or any(w.startswith(k) for k in _LABEL_PREFIXES_TUPLE) for w in words):
         return False
 
-    if len(words) == 1 and (words[0] in HEADER_WORDS or words[0] in label_keywords or any(words[0].startswith(k) for k in ("mother", "father", "husband", "elector", "signat", "departm", "relation", "identit"))):
+    if len(words) == 1 and (words[0] in HEADER_WORDS or words[0] in _LABEL_KEYWORDS_SET or any(words[0].startswith(k) for k in _LABEL_PREFIXES_TUPLE)):
         return False
 
-    if re.search(r'\d', cleaned):
+    if _DIGIT_RE.search(cleaned):
         return False
 
-    if any(w in label_keywords for w in words):
+    if any(w in _LABEL_KEYWORDS_SET for w in words):
         return False
 
-    # Reject if any word is a government/authority header keyword
     if any(w in HEADER_WORDS for w in words):
         return False
 
-    # Reject if any word is an address stopword
     if any(w in ADDRESS_STOPWORDS_IN_NAMES for w in words):
         return False
 
-    # Reject distorted authority/country header strings (e.g. wityofindia, ofindia, etc.)
-    if re.search(r'(?:wity|ofindia|oftndia|oflndia|authorityof|identificalion|authorityoftndia)', cleaned, re.I):
+    if _DISTORTED_AUTHORITY_RE.search(cleaned):
         return False
 
     return True
@@ -226,9 +271,9 @@ def validate_date(value: str) -> bool:
 
     normalized = value.strip().replace("-", "/").replace(".", "/")
 
-    match = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})$', normalized)
+    match = _DATE_FULL_RE.match(normalized)
     if not match:
-        year_match = re.match(r'^(\d{4})$', normalized.strip())
+        year_match = _YEAR_ONLY_RE.match(normalized.strip())
         if year_match:
             year = int(year_match.group(1))
             current_year = datetime.now().year
@@ -255,14 +300,13 @@ def validate_date(value: str) -> bool:
 
 def validate_expiry_date(value: str) -> bool:
     """
-    Validates an expiry date string (allows future dates up to 30 years).
-    Accepts: DD/MM/YYYY, DD-MM-YYYY, DD.MM.YYYY
+    Validates an expiry date string (allows future dates up to 35 years).
     """
     if not value:
         return False
 
     normalized = value.strip().replace("-", "/").replace(".", "/")
-    match = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})$', normalized)
+    match = _DATE_FULL_RE.match(normalized)
     if not match:
         return False
 
@@ -287,14 +331,13 @@ def validate_expiry_date(value: str) -> bool:
 def normalize_date(value: str) -> Optional[str]:
     """
     Normalizes a date string to DD/MM/YYYY format.
-    Returns None if the date is invalid.
     """
     if not value:
         return None
 
     normalized = value.strip().replace("-", "/").replace(".", "/")
 
-    match = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})$', normalized)
+    match = _DATE_FULL_RE.match(normalized)
     if match:
         day, month, year = int(match.group(1)), int(match.group(2)), match.group(3)
         result = f"{day:02d}/{month:02d}/{year}"
@@ -302,7 +345,7 @@ def normalize_date(value: str) -> Optional[str]:
             return result
         return None
 
-    year_match = re.match(r'^(\d{4})$', normalized.strip())
+    year_match = _YEAR_ONLY_RE.match(normalized.strip())
     if year_match:
         year = int(year_match.group(1))
         current_year = datetime.now().year
@@ -321,7 +364,7 @@ def normalize_expiry_date(value: str) -> Optional[str]:
         return None
 
     normalized = value.strip().replace("-", "/").replace(".", "/")
-    match = re.match(r'^(\d{1,2})/(\d{1,2})/(\d{4})$', normalized)
+    match = _DATE_FULL_RE.match(normalized)
     if match:
         day, month, year = int(match.group(1)), int(match.group(2)), match.group(3)
         result = f"{day:02d}/{month:02d}/{year}"
@@ -334,37 +377,29 @@ def normalize_expiry_date(value: str) -> Optional[str]:
 validate_dob = validate_date
 normalize_dob = normalize_date
 
-
-# Helpline / toll-free numbers that must NOT be extracted as dates or years
 _UIDAI_HELPLINE_NUMBERS = {"1947", "18003001947", "18001801947", "1800300", "1800180"}
 
 
 def extract_date_from_text(text: str) -> Optional[str]:
     """
-    Searches any text string for a valid DD/MM/YYYY or DD-MM-YYYY pattern.
-    Strict 'no guessing' rules:
-    - Never extracts standalone '1947' or other UIDAI helpline numbers as DOB year.
-    - Requires full DD/MM/YYYY format for unanchored date extraction.
+    Searches text string for a valid DD/MM/YYYY or DD-MM-YYYY pattern.
     """
     if not text:
         return None
 
-    match = re.search(r'\b(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})\b', text)
+    match = _DATE_SEARCH_RE.search(text)
     if match:
         d, m, y = int(match.group(1)), int(match.group(2)), int(match.group(3))
         if 1 <= d <= 31 and 1 <= m <= 12 and 1900 <= y <= datetime.now().year:
             return f"{d:02d}/{m:02d}/{y:04d}"
 
-    # Only accept standalone year from an explicitly labelled line (not a bare OCR year fallback)
-    # Reject known UIDAI helpline numbers (1947, 18003001947, etc.)
-    cleaned_digits = re.sub(r'[^\d]', '', text.strip())
+    cleaned_digits = _DIGITS_ONLY_RE.sub('', text.strip())
     if cleaned_digits in _UIDAI_HELPLINE_NUMBERS:
         return None
 
-    year_match = re.search(r'\b(19\d{2}|20[0-2]\d)\b', text)
+    year_match = _YEAR_SEARCH_RE.search(text)
     if year_match:
         year_str = year_match.group(1)
-        # Reject UIDAI helpline 1947 as standalone year when no full date is present
         if year_str == "1947":
             return None
         year = int(year_str)
@@ -377,7 +412,6 @@ def extract_date_from_text(text: str) -> Optional[str]:
 def normalize_gender(value: str) -> Optional[str]:
     """
     Normalizes a gender string to canonical English: Male, Female, or Transgender.
-    Handles 'Sex: M', 'Gender: Female', 'fe/Gender.yyMale', single characters, and multi-lingual terms.
     """
     if not value:
         return None
@@ -386,26 +420,22 @@ def normalize_gender(value: str) -> Optional[str]:
     if cleaned in GENDER_MAP:
         return GENDER_MAP[cleaned]
 
-    # Explicit anchor match for single char or word following label
-    # e.g., "Sex: M", "Gender: F", "Sex / लिंग : M", "Gender : Male"
-    match = re.search(r'(?:gender|sex|लिंग|gander|gendar)[\s:\.\/=\-]+([A-Za-z]+|[\u0900-\u097F]+)', value, re.I)
+    match = _GENDER_ANCHOR_RE.search(value)
     if match:
         val_part = match.group(1).lower().strip()
         if val_part in GENDER_MAP:
             return GENDER_MAP[val_part]
 
-    # Check for Female / famale / transgender / male
-    if re.search(r'(?:female|famale|महिला|स्त्री)', cleaned, re.I):
+    if _GENDER_FEMALE_RE.search(cleaned):
         return "Female"
-    if re.search(r'(?:transgender|किन्नर|तृतीयपंथी)', cleaned, re.I):
+    if _GENDER_TRANS_RE.search(cleaned):
         return "Transgender"
-    if re.search(r'(?:male|malo|पुरुष|पुरूष)', cleaned, re.I):
+    if _GENDER_MALE_RE.search(cleaned):
         return "Male"
 
-    # Fallback to single character M or F if standalone or separated
-    if re.search(r'\b[Ff]\b', cleaned):
+    if _GENDER_F_CHAR_RE.search(cleaned):
         return "Female"
-    if re.search(r'\b[Mm]\b', cleaned):
+    if _GENDER_M_CHAR_RE.search(cleaned):
         return "Male"
 
     return None
@@ -413,35 +443,29 @@ def normalize_gender(value: str) -> Optional[str]:
 
 def validate_mobile(value: str) -> bool:
     """
-    Validates a mobile number.
-    Must be exactly 10 digits starting with 6-9 (Indian standard).
-    Rejects masked numbers (containing X, *, etc.).
+    Validates a mobile number (10 digits starting with 6-9).
     """
     if not value:
         return False
 
-    cleaned = re.sub(r'[\s\-\+]', '', value.strip())
+    cleaned = _MOBILE_CLEAN_RE.sub('', value.strip())
 
     if cleaned.startswith("91") and len(cleaned) == 12:
         cleaned = cleaned[2:]
     elif cleaned.startswith("+91") and len(cleaned) == 13:
         cleaned = cleaned[3:]
 
-    if not re.match(r'^[6-9]\d{9}$', cleaned):
-        return False
-
-    return True
+    return bool(_MOBILE_MATCH_RE.match(cleaned))
 
 
 def normalize_mobile(value: str) -> Optional[str]:
     """
     Normalizes a mobile number to plain 10-digit format.
-    Returns None if invalid or masked.
     """
     if not value:
         return None
 
-    cleaned = re.sub(r'[\s\-\+]', '', value.strip())
+    cleaned = _MOBILE_CLEAN_RE.sub('', value.strip())
 
     if cleaned.startswith("91") and len(cleaned) == 12:
         cleaned = cleaned[2:]
@@ -453,8 +477,6 @@ def normalize_mobile(value: str) -> Optional[str]:
     return None
 
 
-# ── Indian States & Union Territories ────────────────────────────
-
 INDIAN_STATES_UTS = [
     "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chhattisgarh",
     "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jharkhand", "Karnataka",
@@ -465,20 +487,26 @@ INDIAN_STATES_UTS = [
     "Delhi", "Jammu and Kashmir", "Ladakh", "Lakshadweep", "Puducherry"
 ]
 
+# Pre-compiled State matching patterns
+_STATE_PATTERNS = [
+    (state, re.compile(r'\b' + re.escape(state).replace(r'\ ', r'\s*') + r'\b', re.I))
+    for state in INDIAN_STATES_UTS
+]
+
 
 def validate_pincode(value: str) -> bool:
     """Validates 6-digit Indian PIN code."""
     if not value:
         return False
-    cleaned = re.sub(r'[^\d]', '', value.strip())
-    return bool(re.match(r'^[1-9][0-9]{5}$', cleaned))
+    cleaned = _DIGITS_ONLY_RE.sub('', value.strip())
+    return bool(_PINCODE_MATCH_RE.match(cleaned))
 
 
 def normalize_pincode(value: str) -> Optional[str]:
     """Normalizes 6-digit PIN code."""
     if not value:
         return None
-    cleaned = re.sub(r'[^\d]', '', value.strip())
+    cleaned = _DIGITS_ONLY_RE.sub('', value.strip())
     if validate_pincode(cleaned):
         return cleaned
     return None
@@ -526,10 +554,9 @@ def extract_state_from_text(text: str) -> Optional[str]:
         if alias in text:
             return canonical
 
-    # Check English names with flexible whitespace
-    for state in INDIAN_STATES_UTS:
-        pattern = re.escape(state).replace(r'\ ', r'\s*')
-        if re.search(r'\b' + pattern + r'\b', text, re.I):
+    # Check English names with pre-compiled patterns
+    for state, pattern in _STATE_PATTERNS:
+        if pattern.search(text):
             return state
 
     return None
@@ -539,7 +566,7 @@ def extract_pincode_from_text(text: str) -> Optional[str]:
     """Extracts 6-digit Indian PIN code from address text."""
     if not text:
         return None
-    matches = re.findall(r'\b([1-9][0-9]{5})\b', text)
+    matches = _PINCODE_SEARCH_RE.findall(text)
     if matches:
         return matches[-1]
     return None
@@ -548,50 +575,22 @@ def extract_pincode_from_text(text: str) -> Optional[str]:
 def validate_address(value: str) -> bool:
     """
     Validates full address string integrity according to the 'no guessing' rule.
-    - Rejects empty or short (<15 chars) noise strings.
-    - Rejects strings containing UIDAI header/footer keywords, email, URLs, or helpline numbers.
-    - Requires at least 2 alphanumeric words with minimum length 3.
-    - Rejects strings that are purely a state, pincode, or label.
     """
     if not value or len(value.strip()) < 15:
         return False
 
     cleaned = value.strip()
 
-    # Reject if text matches address labels or purely numeric/pincode fragments
-    if re.match(r'^(?:address|पता|पत्ता|निवासाचा\s*पत्ता)[\s:\-\.]*$', cleaned, re.I):
+    if _ADDRESS_LABEL_RE.match(cleaned):
         return False
 
-    if re.match(r'^[A-Za-z0-9\s\-_,.]*?\b\d{6}\b$', cleaned) and len(re.findall(r'[a-zA-Z\u0900-\u097F]{3,}', cleaned)) < 2:
+    if _ADDRESS_PIN_ONLY_RE.match(cleaned) and len(_WORD_TOKENS_RE.findall(cleaned)) < 2:
         return False
 
-    # Check for UIDAI header/footer contamination
-    footer_leak_pattern = re.compile(
-        r'(?:unique|unlque|uniqe|ldontif|ldentif|identif)\w*[\s\-_]*(?:authorit|authorlt|authorty)\w*|'
-        r'unique\s*identification|'
-        r'authority\s*of\s*india|'
-        r'भारतीय\s*विशिष्ट\s*पहचान\s*प्राधिकरण|'
-        r'विशिष्ट\s*पहचान|'
-        r'help[@ou0\.\-_\s]*uidai|'
-        r'www[\.\-_\s]*uidai|'
-        r'uidai[\.\-_\s]*gov|'
-        r'p[\.\s]*o[\.\s]*box|'
-        r'\b1947\b|'
-        r'1800[\s\-]?[0-9]{3}[\s\-]?[0-9]{4}|'
-        r'bengaluru[\s\-]*560\s*001|'
-        r'bangalore[\s\-]*560\s*001|'
-        r'gpo\s*bangalore|'
-        r'gpo\s*bengaluru|'
-        r'\bvid\b|'
-        r'signature\s*valid|'
-        r'digitally\s*signed',
-        re.I
-    )
-    if footer_leak_pattern.search(cleaned):
+    if _ADDRESS_FOOTER_LEAK_RE.search(cleaned):
         return False
 
-    # Ensure meaningful word count
-    words = re.findall(r'[a-zA-Z\u0900-\u097F]{3,}', cleaned)
+    words = _WORD_TOKENS_RE.findall(cleaned)
     if len(words) < 2:
         return False
 

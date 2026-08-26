@@ -177,13 +177,14 @@ async def scan_document(
 
     # 4. OCR Processing (Pass 1 - Fast Primary Pass)
     raw_results = ocr_engine.process_image(img, apply_adaptive_threshold=False)
+    all_text_pass1 = " ".join([l.get('text', '') for l in raw_results])
     
     best_doc_result = None
     best_doc_conf = 0.0
     best_raw_results = raw_results
 
     for ext in selected_extractors:
-        res = ext.extract(raw_results)
+        res = ext.extract(raw_results, all_text=all_text_pass1)
         if res and res["confidence"] > best_doc_conf:
             best_doc_conf = res["confidence"]
             best_doc_result = res
@@ -194,8 +195,9 @@ async def scan_document(
         for rot_code in [cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_90_CLOCKWISE]:
             rotated_img = cv2.rotate(img, rot_code)
             raw_rot = ocr_engine.process_image(rotated_img, apply_adaptive_threshold=False)
+            all_text_rot = " ".join([l.get('text', '') for l in raw_rot])
             for ext in selected_extractors:
-                res = ext.extract(raw_rot)
+                res = ext.extract(raw_rot, all_text=all_text_rot)
                 if res and res["confidence"] > best_doc_conf:
                     best_doc_conf = res["confidence"]
                     best_doc_result = res
@@ -207,9 +209,10 @@ async def scan_document(
     if not best_doc_result or best_doc_conf < settings.retry_threshold:
         logger.info(f"[{request_id}] Primary passes low ({best_doc_conf:.2f}). Running adaptive thresholding pass.")
         raw_results_pass2 = ocr_engine.process_image(img, apply_adaptive_threshold=True)
+        all_text_pass2 = " ".join([l.get('text', '') for l in raw_results_pass2])
         
         for ext in selected_extractors:
-            res = ext.extract(raw_results_pass2)
+            res = ext.extract(raw_results_pass2, all_text=all_text_pass2)
             if res and res["confidence"] > best_doc_conf:
                 best_doc_conf = res["confidence"]
                 best_doc_result = res

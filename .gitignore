@@ -84,3 +84,7 @@ test_images/
 !frontend/src/assets/*.jpg
 !frontend/src/assets/*.svg
 
+# Binaries & Executables
+*.exe
+ngrok.exe
+
