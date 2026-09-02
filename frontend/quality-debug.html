@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <body>
+    <pre id="result">running</pre>
+    <script type="module">
+      import { analyseFramePixels, updateStabilityScore } from '/src/scanner/cv/captureQuality.ts';
+
+      const sources = [
+        '/@fs/C:/Users/techn/Downloads/IdScanner/assets/adh.jpg',
+        '/@fs/C:/Users/techn/Downloads/IdScanner/assets/ABHA_Card_91-2748-8665-1315.png',
+      ];
+      const output = [];
+      for (const source of sources) {
+        const image = new Image();
+        image.src = source;
+        await image.decode();
+        const canvas = document.createElement('canvas');
+        canvas.width = 320;
+        canvas.height = Math.round(image.naturalHeight / image.naturalWidth * 320);
+        const context = canvas.getContext('2d', { willReadFrequently: true });
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        const pixels = context.getImageData(0, 0, canvas.width, canvas.height);
+        const initial = analyseFramePixels(pixels.data, pixels.width, pixels.height, 0);
+        const stable = updateStabilityScore(initial, 1);
+        output.push({ source: source.split('/').at(-1), dimensions: [pixels.width, pixels.height], initial, stable });
+      }
+      document.querySelector('#result').textContent = JSON.stringify(output, null, 2);
+      document.body.dataset.done = 'true';
+    </script>
+  </body>
+</html>

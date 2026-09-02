@@ -32,6 +32,12 @@ function ngrokPlugin() {
             stdio: 'ignore',
             detached: false,
           })
+          // ngrok is optional for local scanner use. A missing executable or
+          // blocked spawn must not terminate Vite after the app is listening.
+          ngrokProc.once('error', () => {
+            console.warn('ngrok is unavailable; continuing without a public tunnel.')
+            ngrokProc = null
+          })
 
           for (let i = 0; i < 10; i++) {
             await new Promise((r) => setTimeout(r, 500))
@@ -45,7 +51,7 @@ function ngrokPlugin() {
               }
             }
           }
-        } catch (e) {
+        } catch {
           // Ignore if ngrok is missing
         }
       })

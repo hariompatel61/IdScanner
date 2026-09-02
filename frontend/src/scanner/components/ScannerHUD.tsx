@@ -1,20 +1,23 @@
 import React from 'react';
 import { ScannerState, CameraErrorType } from '../types';
+import type { CaptureQuality } from '../types';
 
 interface ScannerHUDProps {
   state: ScannerState;
   cameraError: CameraErrorType | null;
-  onManualCapture: () => void;
   onRescan: () => void;
   onUploadFile?: () => void;
+  captureQuality?: CaptureQuality | null;
+  autoCaptureEnabled?: boolean;
 }
 
 export const ScannerHUD: React.FC<ScannerHUDProps> = ({
   state,
   cameraError,
-  onManualCapture,
   onRescan,
   onUploadFile,
+  captureQuality,
+  autoCaptureEnabled = true,
 }) => {
   let message = "";
 
@@ -33,6 +36,11 @@ export const ScannerHUD: React.FC<ScannerHUDProps> = ({
         message = "Unable to access the camera.";
     }
   } else {
+    if (captureQuality) {
+      message = captureQuality.ready
+        ? (autoCaptureEnabled ? 'Document ready. Capturing automatically...' : 'Document ready. Auto capture is off; use Capture.')
+        : captureGuidance(captureQuality.rejection_reason);
+    } else {
     switch (state) {
       case ScannerState.INITIALIZING:
         message = "Initializing camera...";
@@ -64,6 +72,7 @@ export const ScannerHUD: React.FC<ScannerHUDProps> = ({
       default:
         message = "Ensure all corners are visible and text is clear";
     }
+    }
   }
 
   const isScanningActive = (
@@ -92,26 +101,18 @@ export const ScannerHUD: React.FC<ScannerHUDProps> = ({
         {/* Status Info Pill */}
         <div className="hud-message-pill" role="alert" aria-live="polite">
           <i className="hud-info-icon">i</i>
-          <span>{message}</span>
+          <span>{message}{captureQuality ? ` · Quality ${Math.round(captureQuality.overall_score * 100)}%` : ''}</span>
         </div>
 
         {/* Action Controls Group */}
         <div className="hud-controls-group">
           {isScanningActive && (
-            <div style={{ display: 'flex', gap: '10px', width: '100%' }}>
-              <button onClick={onManualCapture} className="btn-primary-capture" style={{ flex: 2 }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" />
-                  <circle cx="12" cy="13" r="4" />
-                </svg>
-                <span>Capture</span>
-              </button>
-
-              {onUploadFile && (
+            onUploadFile && (
+              <div style={{ display: 'flex', width: '100%' }}>
                 <button
                   onClick={onUploadFile}
                   style={{
-                    flex: 1,
+                    width: '100%',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
@@ -129,8 +130,8 @@ export const ScannerHUD: React.FC<ScannerHUDProps> = ({
                 >
                   <span>📁 Upload</span>
                 </button>
-              )}
-            </div>
+              </div>
+            )
           )}
 
           {state === ScannerState.PROCESSING && (
@@ -168,3 +169,23 @@ export const ScannerHUD: React.FC<ScannerHUDProps> = ({
     </>
   );
 };
+
+function captureGuidance(reason: CaptureQuality['rejection_reason']): string {
+  const guidance: Record<CaptureQuality['rejection_reason'], string> = {
+    READY_TO_CAPTURE: 'Document ready to capture',
+    DOCUMENT_NOT_DETECTED: 'Document not detected. Position it inside the frame.',
+    MULTIPLE_DOCUMENTS: 'Show one document only.',
+    MOVE_CLOSER: 'Move closer so the document fills more of the frame.',
+    KEEP_DOCUMENT_IN_FRAME: 'Keep the whole document inside the frame.',
+    SHOW_ALL_EDGES: 'Show all four document edges clearly.',
+    TOO_DARK: 'Improve lighting on the document.',
+    TOO_BRIGHT: 'Reduce direct light on the document.',
+    LOW_CONTRAST: 'Improve contrast between the document and background.',
+    REDUCE_GLARE: 'Reduce glare or change the camera angle.',
+    TOO_BLURRY: 'Hold the camera still and let it focus.',
+    HOLD_STEADY: 'Hold steady before capture.',
+    REDUCE_TILT: 'Reduce tilt and keep the document flat.',
+    WORKER_ERROR: 'Capture analysis is unavailable. You can upload an image instead.',
+  };
+  return guidance[reason];
+}

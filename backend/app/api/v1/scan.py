@@ -4,12 +4,12 @@ import uuid
 from typing import Dict, Any, Optional
 from fastapi import APIRouter, File, UploadFile, Query, HTTPException, Depends, Request
 import cv2
-import numpy as np
 
 from app.core.config import settings
 from app.core.security import verify_api_token
 from app.core.scan_logger import scan_logger
 from app.ocr.engine import ocr_engine
+from app.preprocessing import ImageDecodeError, decode_image_bytes, preprocess_document_image
 from app.extractors.regex import (
     AadhaarExtractor,
     AadhaarBackExtractor,
@@ -152,33 +152,43 @@ async def scan_document(
     content = await file.read()
     if len(content) > MAX_FILE_SIZE_BYTES:
         raise HTTPException(status_code=413, detail=f"File too large. Max size is {settings.max_image_size_mb}MB.")
-    
+
     if file.content_type and file.content_type not in ["image/jpeg", "image/png", "image/webp"]:
         raise HTTPException(status_code=415, detail="Unsupported media type. Use JPEG, PNG, or WEBP.")
 
-    # 2. In-Memory Image Decoding (Zero disk I/O)
+    # 2. Safe In-Memory Image Decoding (Zero disk I/O)
     try:
-        if not content:
-            raise ValueError("Uploaded file is empty.")
-        np_arr = np.frombuffer(content, np.uint8)
-        img = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
-        if img is None or img.size == 0:
-            raise ValueError("Failed to decode image buffer. Unsupported format.")
-    except Exception as e:
-        logger.error(f"Image decode error [{request_id}]: {e}")
+        decoded = decode_image_bytes(content, file.content_type)
+    except ImageDecodeError as exc:
+        # Do not log request bytes, image content, or decoder internals.
+        logger.warning("Image decode rejected [%s]: %s", request_id, str(exc))
         raise HTTPException(status_code=400, detail="Invalid image payload.")
 
-    # 3. Determine Extractor Strategy
+    # 3. Fail-safe preprocessing: OCR gets a rectified/enhanced image only
+    # when the operation is plausible; otherwise it receives an isolated copy
+    # of the decoded original.
+    preprocessing = preprocess_document_image(decoded.image)
+    img = preprocessing.image
+    logger.info(
+        "[%s] Preprocessing | steps=%s | perspective=%s | fallback=%s | time=%sms",
+        request_id,
+        ",".join(preprocessing.preprocessing_steps),
+        preprocessing.perspective_corrected,
+        preprocessing.fallback_used,
+        preprocessing.processing_time_ms,
+    )
+
+    # 4. Determine Extractor Strategy
     target_doc_type = (document_type or "").strip().lower()
     if target_doc_type and target_doc_type in EXTRACTOR_MAP:
         selected_extractors = [EXTRACTOR_MAP[target_doc_type]]
     else:
         selected_extractors = [_aadhaar_ext, _aadhaar_back_ext, _pan_ext, _voter_ext, _abha_ext, _farmer_ext, _passport_ext]
 
-    # 4. OCR Processing (Pass 1 - Fast Primary Pass)
+    # 5. OCR Processing (Pass 1 - Fast Primary Pass)
     raw_results = ocr_engine.process_image(img, apply_adaptive_threshold=False)
     all_text_pass1 = " ".join([l.get('text', '') for l in raw_results])
-    
+
     best_doc_result = None
     best_doc_conf = 0.0
     best_raw_results = raw_results
@@ -190,7 +200,7 @@ async def scan_document(
             best_doc_result = res
             best_raw_results = raw_results
 
-    # 5. Orientation Fallback (Rotate 90 deg if portrait or low confidence)
+    # 6. Orientation Fallback (Rotate 90 deg if portrait or low confidence)
     if not best_doc_result or best_doc_conf < settings.retry_threshold:
         for rot_code in [cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_90_CLOCKWISE]:
             rotated_img = cv2.rotate(img, rot_code)
@@ -205,12 +215,12 @@ async def scan_document(
             if best_doc_result and best_doc_conf >= settings.high_confidence_threshold:
                 break
 
-    # 6. OCR Processing (Pass 2 - Adaptive Threshold Fallback ONLY if still below threshold)
+    # 7. OCR Processing (Pass 2 - Adaptive Threshold Fallback ONLY if still below threshold)
     if not best_doc_result or best_doc_conf < settings.retry_threshold:
         logger.info(f"[{request_id}] Primary passes low ({best_doc_conf:.2f}). Running adaptive thresholding pass.")
         raw_results_pass2 = ocr_engine.process_image(img, apply_adaptive_threshold=True)
         all_text_pass2 = " ".join([l.get('text', '') for l in raw_results_pass2])
-        
+
         for ext in selected_extractors:
             res = ext.extract(raw_results_pass2, all_text=all_text_pass2)
             if res and res["confidence"] > best_doc_conf:
@@ -220,13 +230,13 @@ async def scan_document(
 
     processing_time_ms = int((time.time() - start_time) * 1000)
 
-    # 7. Evaluation & Response Generation
+    # 8. Evaluation & Response Generation
     if best_doc_result and best_doc_conf >= settings.high_confidence_threshold:
         raw_doc_type = best_doc_result["document_type"].lower()
         doc_type = DOC_TYPE_NORMAL_MAP.get(raw_doc_type, raw_doc_type)
         identifier = best_doc_result["identifier"]
 
-        # Build fields dictionary
+        # Build base fields dictionary from extractor output
         fields: Dict[str, Any] = {}
         if doc_type in ["aadhaar_card", "aadhaar_card_back"]:
             fields["aadhaar_number"] = identifier
@@ -244,7 +254,10 @@ async def scan_document(
             if best_doc_result.get("abha_address"):
                 fields["abha_address"] = best_doc_result.get("abha_address")
 
-        # Run structured field parser on the SAME OCR output
+        # Run structured field parser on the SAME OCR output.
+        # For Aadhaar front, ALL of name / DOB / gender / aadhaar_number are
+        # mandatory. If any field is unreadable, return rescan_required so the
+        # user captures a clearer image instead of receiving partial data.
         overall_status = "ok"
         parser = PARSER_MAP.get(doc_type)
         if parser:
@@ -256,11 +269,45 @@ async def scan_document(
                         fields[k] = v.value
 
                 overall_status = parsed.overall_status
+
+                if overall_status == "rescan_required":
+                    missing = ", ".join(parsed.failed_fields)
+                    logger.warning(
+                        "[%s] Mandatory fields incomplete for %s: %s",
+                        request_id, doc_type, missing,
+                    )
+                    scan_logger.log_scan(
+                        request_id=request_id,
+                        document_type=doc_type,
+                        identifier=identifier,
+                        fields=fields,
+                        confidence=best_doc_conf,
+                        processing_time_ms=processing_time_ms,
+                        overall_status="rescan_required",
+                        client_ip=client_ip,
+                        error_code="INCOMPLETE_FIELDS",
+                        message=f"Could not read: {missing}",
+                    )
+                    return ScanResponse(
+                        success=False,
+                        document_type=doc_type,
+                        identifier=None,
+                        fields={},
+                        error_code="INCOMPLETE_FIELDS",
+                        message=(
+                            f"Could not clearly read: {missing}. "
+                            "Please ensure the document is flat, well-lit, "
+                            "and all text is visible, then rescan."
+                        ),
+                    )
             except Exception as e:
                 logger.warning(f"[{request_id}] Field parser error for {doc_type}: {e}")
                 overall_status = "ok"
 
-        logger.info(f"[{request_id}] Success | doc_type={doc_type} | confidence={best_doc_conf:.2f} | overall_status={overall_status} | processing_time={processing_time_ms}ms")
+        logger.info(
+            f"[{request_id}] Success | doc_type={doc_type} | confidence={best_doc_conf:.2f} "
+            f"| overall_status={overall_status} | processing_time={processing_time_ms}ms"
+        )
 
         # Persist Scan Log
         scan_logger.log_scan(
@@ -283,7 +330,7 @@ async def scan_document(
 
     else:
         logger.warning(f"[{request_id}] Scan Low Confidence / Unrecognized | processing_time={processing_time_ms}ms")
-        
+
         # Persist Failed Scan Log
         scan_logger.log_scan(
             request_id=request_id,
