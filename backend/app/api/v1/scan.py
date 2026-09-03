@@ -276,11 +276,27 @@ async def scan_document(
             try:
                 sorted_lines = reconstruct_lines(best_raw_results)
                 parsed = parser.extract_fields(sorted_lines)
+                
+                from app.parsers.validation import ValidationEngine
+                from app.parsers.consistency import ConsistencyEngine
+                from app.parsers.decision import ConfidenceEngine
+                
+                val_results = ValidationEngine.validate_document(doc_type, parsed.fields)
+                for f_name, f_res in val_results.items():
+                    if f_name in parsed.fields:
+                        parsed.fields[f_name].validation = f_res
+                
+                consistency = ConsistencyEngine.check_consistency(doc_type, parsed.fields)
+                doc_conf = ConfidenceEngine.calculate_document_confidence(parsed.fields, parser.MANDATORY_FIELDS, consistency)
+                
                 for k, v in parsed.fields.items():
-                    if v.status == "ok" and v.value and k not in fields:
+                    if v.status != "not_found" and v.value and k not in fields:
                         fields[k] = v.value
 
-                overall_status = parsed.overall_status
+                overall_status = "ok"
+                if doc_conf.decision in ("RECAPTURE", "INVALID"):
+                    overall_status = "rescan_required"
+                    parsed.failed_fields = doc_conf.reasons
 
                 if overall_status == "rescan_required":
                     missing = ", ".join(parsed.failed_fields)

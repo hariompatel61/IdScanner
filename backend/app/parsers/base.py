@@ -1,18 +1,13 @@
 import re
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass, field
+from app.parsers.models import FieldResult
+
 from app.ocr.models import OCRLine
 from app.extractors.labels import LABELS
 from app.validators.field_validators import validate_name, clean_name_text, validate_date, extract_date_from_text, normalize_gender
 from app.core.config import settings
 from app.parsers.candidate import FieldCandidate, CandidateResolver
-
-@dataclass
-class FieldResult:
-    """Represents a single parsed field."""
-    value: Optional[str] = None
-    confidence: float = 0.0
-    status: str = "not_found"  # "ok" | "low_confidence" | "not_found"
 
 @dataclass
 class ParsedDocument:

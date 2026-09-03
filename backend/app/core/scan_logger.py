@@ -44,6 +44,17 @@ class ScanLogger:
         except Exception as e:
             logger.warning(f"Failed to load scan history logs: {e}")
 
+    def _redact_value(self, key: str, value: Any) -> Any:
+        if not value or not isinstance(value, str): return value
+        key = key.lower()
+        if 'aadhaar' in key and len(value) >= 4:
+            return 'X' * (len(value)-4) + value[-4:]
+        if 'pan' in key and len(value) >= 4:
+            return 'X' * (len(value)-4) + value[-4:]
+        if 'passport' in key and len(value) >= 4:
+            return 'X' * (len(value)-4) + value[-4:]
+        return value
+
     def log_scan(
         self,
         request_id: str,
@@ -60,12 +71,21 @@ class ScanLogger:
         """
         Records a scan event both in memory and persistently to disk.
         """
+        redacted_fields = {}
+        for k, v in fields.items():
+            if hasattr(v, "value"): # if it's a FieldResult
+                redacted_fields[k] = self._redact_value(k, v.value)
+            else:
+                redacted_fields[k] = self._redact_value(k, v)
+            
+        redacted_identifier = self._redact_value(document_type, identifier) if identifier else identifier
+        
         entry = {
             "timestamp": datetime.now().isoformat(),
             "request_id": request_id,
             "document_type": document_type,
-            "identifier": identifier,
-            "fields": fields,
+            "identifier": redacted_identifier,
+            "fields": redacted_fields,
             "confidence": round(confidence, 4),
             "processing_time_ms": processing_time_ms,
             "overall_status": overall_status,

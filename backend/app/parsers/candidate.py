@@ -60,4 +60,26 @@ class CandidateResolver:
             return field_result_cls(value=None, confidence=0.0, status="not_found")
             
         status = "ok" if best.confidence >= settings.field_confidence_threshold else "low_confidence"
-        return field_result_cls(value=best.value, confidence=round(best.confidence, 4), status=status)
+        
+        from app.parsers.models import FieldConfidence, ValidationResult
+        ext_conf = best.confidence
+        if best.source.startswith("label_match"): ext_conf = min(1.0, ext_conf + 0.1)
+        if best.source == "document_rule": ext_conf = min(1.0, ext_conf + 0.05)
+        
+        fc = FieldConfidence(ocr_confidence=best.confidence, extraction_confidence=ext_conf, score=best.score)
+        val_status = "VALID" if best.validation_status in ("ok", "valid", "valid_format", "checksum_valid") else "UNKNOWN"
+        vr = ValidationResult(status=val_status)
+        
+        return field_result_cls(
+            value=best.value,
+            raw_value=best.raw_value,
+            normalized_value=best.value,
+            confidence=round(best.confidence, 4),
+            status=status,
+            field_confidence=fc,
+            validation=vr,
+            source=best.source,
+            polygon=best.polygon,
+            bbox=best.bbox,
+            candidates=valid_candidates
+        )
