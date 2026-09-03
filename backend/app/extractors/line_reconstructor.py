@@ -1,125 +1,136 @@
-"""
-Line Reconstructor — Sorts and groups raw OCR bounding-box output
-into logical reading order (top-to-bottom, left-to-right within bands).
-
-This is critical because labels ("Name") and values ("Aarav Sharma")
-often appear on adjacent lines or adjacent horizontal positions, and
-raw OCR order is not guaranteed to be spatially consistent.
-"""
-
-from typing import List, Dict, Any
-from dataclasses import dataclass, field
+from typing import List, Dict, Any, Tuple
 from app.core.config import settings
+from app.ocr.models import OCRToken, OCRLine, OCRBlock, OCRDocument
+import math
+import numpy as np
+import time
 
-
-@dataclass
-class OCRLine:
-    """Represents a single logical line of OCR text with spatial metadata."""
-    text: str
-    confidence: float
-    y_mid: float
-    x_start: float
-    x_end: float
-    line_index: int = 0
-    bbox: List[List[float]] = field(default_factory=list)
-
-
-def _compute_y_mid(bbox: List[List[float]]) -> float:
-    """Compute the vertical midpoint of a bounding box (average of all Y coords)."""
-    if not bbox or len(bbox) < 4:
+def _compute_angle(bbox: List[List[float]]) -> float:
+    if len(bbox) < 4:
         return 0.0
-    return sum(point[1] for point in bbox) / len(bbox)
+    dx = bbox[1][0] - bbox[0][0]
+    dy = bbox[1][1] - bbox[0][1]
+    return math.degrees(math.atan2(dy, dx))
 
+def _rotate_point(x: float, y: float, angle_degrees: float, cx: float = 0, cy: float = 0) -> Tuple[float, float]:
+    angle_rad = math.radians(angle_degrees)
+    cos_a = math.cos(angle_rad)
+    sin_a = math.sin(angle_rad)
+    nx = cos_a * (x - cx) - sin_a * (y - cy) + cx
+    ny = sin_a * (x - cx) + cos_a * (y - cy) + cy
+    return nx, ny
 
-def _compute_x_start(bbox: List[List[float]]) -> float:
-    """Compute the leftmost X coordinate of a bounding box."""
-    if not bbox or len(bbox) < 4:
-        return 0.0
-    return min(point[0] for point in bbox)
-
-
-def _compute_x_end(bbox: List[List[float]]) -> float:
-    """Compute the rightmost X coordinate of a bounding box."""
-    if not bbox or len(bbox) < 4:
-        return 0.0
-    return max(point[0] for point in bbox)
-
-
-def reconstruct_lines(
-    raw_ocr_results: List[Dict[str, Any]],
-    y_tolerance: int | None = None,
-) -> List[OCRLine]:
+def reconstruct_document(raw_ocr_results: List[Dict[str, Any]], image_dimensions: Tuple[int, int] = (0, 0), processing_time_ms: int = 0, y_tolerance: int | None = None) -> OCRDocument:
     """
-    Takes raw OCR output and reconstructs logical reading order.
-
-    Args:
-        raw_ocr_results: List of dicts with keys: text, confidence, bbox.
-            bbox format: [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
-        y_tolerance: Pixel tolerance for grouping lines into horizontal bands.
-            Defaults to settings.line_merge_y_tolerance.
-
-    Returns:
-        List of OCRLine objects in logical reading order (top-to-bottom,
-        left-to-right within each band), with line_index assigned.
+    Takes raw OCR output and creates a full OCRDocument with tokens, lines, and blocks.
+    Uses geometric sorting (handles rotation and multi-column).
     """
     if not raw_ocr_results:
-        return []
+        return OCRDocument(tokens=[], lines=[], blocks=[], image_dimensions=image_dimensions, processing_time_ms=processing_time_ms)
 
-    if y_tolerance is None:
-        y_tolerance = settings.line_merge_y_tolerance
+    y_tol = y_tolerance if y_tolerance is not None else settings.line_merge_y_tolerance
 
-    # Step 1: Convert raw dicts to intermediate objects with spatial info
-    items = []
+    tokens: List[OCRToken] = []
     for entry in raw_ocr_results:
         text = entry.get("text", "").strip()
         if not text:
             continue
-        confidence = entry.get("confidence", 0.0)
+        conf = entry.get("confidence", 0.0)
         bbox = entry.get("bbox", [])
-        y_mid = _compute_y_mid(bbox)
-        x_start = _compute_x_start(bbox)
-        x_end = _compute_x_end(bbox)
-        items.append(OCRLine(
+        if len(bbox) < 4:
+            continue
+
+        x_coords = [p[0] for p in bbox]
+        y_coords = [p[1] for p in bbox]
+        x_min, x_max = min(x_coords), max(x_coords)
+        y_min, y_max = min(y_coords), max(y_coords)
+
+        w = x_max - x_min
+        h = y_max - y_min
+        cx = x_min + w / 2
+        cy = y_min + h / 2
+        angle = _compute_angle(bbox)
+
+        tokens.append(OCRToken(
             text=text,
-            confidence=confidence,
-            y_mid=y_mid,
-            x_start=x_start,
-            x_end=x_end,
-            bbox=bbox,
+            confidence=conf,
+            polygon=bbox,
+            bbox=[x_min, y_min, x_max, y_max],
+            center_x=cx,
+            center_y=cy,
+            width=w,
+            height=h,
+            angle=angle
         ))
 
-    if not items:
-        return []
+    if not tokens:
+        return OCRDocument(tokens=[], lines=[], blocks=[], image_dimensions=image_dimensions, processing_time_ms=processing_time_ms)
 
-    # Step 2: Sort by Y midpoint (top-to-bottom)
-    items.sort(key=lambda item: item.y_mid)
+    angles = [t.angle for t in tokens if abs(t.angle) > 0.1 and abs(t.angle) < 45]
+    dominant_angle = float(np.median(angles)) if angles else 0.0
 
-    # Step 3: Group into horizontal bands using Y tolerance
-    bands: List[List[OCRLine]] = []
-    current_band: List[OCRLine] = [items[0]]
-    current_band_y = items[0].y_mid
+    for t in tokens:
+        nx, ny = _rotate_point(t.center_x, t.center_y, -dominant_angle)
+        t._sort_x = nx
+        t._sort_y = ny
 
-    for item in items[1:]:
-        if abs(item.y_mid - current_band_y) <= y_tolerance:
-            # Same band
-            current_band.append(item)
+    tokens.sort(key=lambda t: t._sort_y)
+
+    bands: List[List[OCRToken]] = []
+    current_band: List[OCRToken] = [tokens[0]]
+    current_band_y = tokens[0]._sort_y
+
+    for t in tokens[1:]:
+        threshold = max(y_tol, min(t.height, current_band[-1].height) * 0.4)
+        if abs(t._sort_y - current_band_y) <= threshold:
+            current_band.append(t)
+            current_band_y = sum(ct._sort_y for ct in current_band) / len(current_band)
         else:
-            # New band
             bands.append(current_band)
-            current_band = [item]
-            current_band_y = item.y_mid
+            current_band = [t]
+            current_band_y = t._sort_y
 
-    # Don't forget the last band
     bands.append(current_band)
 
-    # Step 4: Within each band, sort left-to-right by X start
-    result: List[OCRLine] = []
+    lines: List[OCRLine] = []
+    blocks: List[OCRBlock] = []
     line_index = 0
     for band in bands:
-        band.sort(key=lambda item: item.x_start)
-        for item in band:
-            item.line_index = line_index
-            result.append(item)
+        band.sort(key=lambda t: t._sort_x)
+        # Create an OCRBlock for the band
+        band_lines = []
+        for t in band:
+            line = OCRLine(
+                text=t.text,
+                tokens=[t],
+                bbox=t.polygon,
+                confidence=t.confidence,
+                reading_order=line_index
+            )
+            band_lines.append(line)
+            lines.append(line)
             line_index += 1
+            
+        if band_lines:
+            pts = [p for l in band_lines for p in l.bbox]
+            bx_min = min(p[0] for p in pts)
+            by_min = min(p[1] for p in pts)
+            bx_max = max(p[0] for p in pts)
+            by_max = max(p[1] for p in pts)
+            blocks.append(OCRBlock(lines=band_lines, bbox=[bx_min, by_min, bx_max, by_max]))
 
-    return result
+    return OCRDocument(
+        tokens=tokens,
+        lines=lines,
+        blocks=blocks,
+        image_dimensions=image_dimensions,
+        processing_time_ms=processing_time_ms
+    )
+
+def reconstruct_lines(raw_ocr_results: List[Dict[str, Any]], y_tolerance: int | None = None) -> List[OCRLine]:
+    """
+    Takes raw OCR output and reconstructs logical reading order.
+    Returns just the lines for backwards compatibility with legacy parsers.
+    """
+    doc = reconstruct_document(raw_ocr_results, y_tolerance=y_tolerance)
+    return doc.lines

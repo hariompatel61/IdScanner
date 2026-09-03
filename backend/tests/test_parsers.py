@@ -18,11 +18,9 @@ def _make_line(text, confidence=0.95, y_mid=0.0, x_start=0.0, x_end=100.0, line_
     """Helper to create an OCRLine for testing."""
     return OCRLine(
         text=text,
+        tokens=[],
         confidence=confidence,
-        y_mid=y_mid,
-        x_start=x_start,
-        x_end=x_end,
-        line_index=line_index,
+        reading_order=line_index,
         bbox=[[x_start, y_mid - 10], [x_end, y_mid - 10], [x_end, y_mid + 10], [x_start, y_mid + 10]],
     )
 
