@@ -18,3 +18,4 @@ numpy==2.4.2
 # Testing & Pure-Python Load Benchmarking
 pytest==8.2.2
 httpx==0.28.1
+prometheus-client==0.20.0

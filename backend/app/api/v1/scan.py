@@ -10,6 +10,7 @@ from app.core.security import verify_api_token
 from app.core.scan_logger import scan_logger
 from app.ocr.engine import ocr_engine
 from app.preprocessing import ImageDecodeError, decode_image_bytes, preprocess_document_image
+from app.api import metrics
 from app.extractors.regex import (
     AadhaarExtractor,
     AadhaarBackExtractor,
@@ -184,6 +185,7 @@ async def scan_document(
         preprocessing.fallback_used,
         preprocessing.processing_time_ms,
     )
+    metrics.PREPROCESSING_LATENCY.observe(preprocessing.processing_time_ms / 1000.0)
 
     # 4. Determine Extractor Strategy
     target_doc_type = (document_type or "").strip().lower()
@@ -205,11 +207,14 @@ async def scan_document(
         selected_extractors = all_legacy_exts
 
     # 5. OCR Processing (Pass 1 - Fast Primary Pass)
+    ocr_start_time = time.time()
     try:
         raw_results = await ocr_engine.process_image_async(img, apply_adaptive_threshold=False)
     except TimeoutError:
         raise APIError(code="REQUEST_TIMEOUT", message="OCR processing timed out.", status_code=504)
-        
+    
+    metrics.OCR_LATENCY.observe(time.time() - ocr_start_time)
+
     all_text_pass1 = " ".join([l.get('text', '') for l in raw_results])
 
     best_doc_result = None
@@ -227,11 +232,13 @@ async def scan_document(
     if not best_doc_result or best_doc_conf < settings.retry_threshold:
         for rot_code in [cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_90_CLOCKWISE]:
             rotated_img = cv2.rotate(img, rot_code)
+            ocr_start_time = time.time()
             try:
                 raw_rot = await ocr_engine.process_image_async(rotated_img, apply_adaptive_threshold=False)
             except TimeoutError:
                 raise APIError(code="REQUEST_TIMEOUT", message="OCR processing timed out.", status_code=504)
-                
+            
+            metrics.OCR_LATENCY.observe(time.time() - ocr_start_time)
             all_text_rot = " ".join([l.get('text', '') for l in raw_rot])
             for ext in selected_extractors:
                 res = ext.extract(raw_rot, all_text=all_text_rot)
@@ -245,11 +252,13 @@ async def scan_document(
     # 7. OCR Processing (Pass 2 - Adaptive Threshold Fallback ONLY if still below threshold)
     if not best_doc_result or best_doc_conf < settings.retry_threshold:
         logger.info(f"[{request_id}] Primary passes low ({best_doc_conf:.2f}). Running adaptive thresholding pass.")
+        ocr_start_time = time.time()
         try:
             raw_results_pass2 = await ocr_engine.process_image_async(img, apply_adaptive_threshold=True)
         except TimeoutError:
             raise APIError(code="REQUEST_TIMEOUT", message="OCR processing timed out.", status_code=504)
             
+        metrics.OCR_LATENCY.observe(time.time() - ocr_start_time)
         all_text_pass2 = " ".join([l.get('text', '') for l in raw_results_pass2])
 
         for ext in selected_extractors:
@@ -293,6 +302,7 @@ async def scan_document(
         parser = document_registry.get(doc_type)
         if parser:
             try:
+                parser_start = time.time()
                 sorted_lines = reconstruct_lines(best_raw_results)
                 parsed = parser.extract_fields(sorted_lines)
                 
@@ -308,6 +318,8 @@ async def scan_document(
                 consistency = ConsistencyEngine.check_consistency(doc_type, parsed.fields)
                 doc_conf = ConfidenceEngine.calculate_document_confidence(parsed.fields, parser.MANDATORY_FIELDS, consistency)
                 
+                metrics.PARSER_LATENCY.labels(document_type=doc_type).observe(time.time() - parser_start)
+
                 for k, v in parsed.fields.items():
                     if v.status != "not_found" and v.value and k not in fields:
                         fields[k] = v.value
@@ -335,6 +347,7 @@ async def scan_document(
                         error_code="INCOMPLETE_FIELDS",
                         message=f"Could not read: {missing}",
                     )
+                    metrics.DOCUMENT_TYPE_DISTRIBUTION.labels(document_type=doc_type, status="incomplete_fields").inc()
                     return ScanResponse(
                         success=False,
                         request_id=request_id,
@@ -370,6 +383,7 @@ async def scan_document(
                     client_ip=client_ip,
                 )
 
+                metrics.DOCUMENT_TYPE_DISTRIBUTION.labels(document_type=doc_type, status="ok").inc()
                 return ScanResponse(
                     success=True,
                     request_id=request_id,
@@ -401,6 +415,7 @@ async def scan_document(
         message="Unable to confidently extract the document identifier.",
     )
 
+    metrics.DOCUMENT_TYPE_DISTRIBUTION.labels(document_type="unknown", status="low_confidence").inc()
     return ScanResponse(
         success=False,
         request_id=request_id,

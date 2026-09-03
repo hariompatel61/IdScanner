@@ -3,6 +3,7 @@ from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from app.schemas.scan import ScanResponse, ErrorDetail
 import logging
+from app.api import metrics
 
 logger = logging.getLogger(__name__)
 
@@ -16,6 +17,7 @@ class APIError(Exception):
 async def api_error_handler(request: Request, exc: APIError):
     request_id = getattr(request.state, "request_id", None)
     logger.warning(f"[{request_id}] APIError: {exc.code} - {exc.message}")
+    metrics.ERROR_RATE.labels(error_code=exc.code).inc()
     
     return JSONResponse(
         status_code=exc.status_code,
@@ -32,6 +34,7 @@ async def api_error_handler(request: Request, exc: APIError):
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     request_id = getattr(request.state, "request_id", None)
     logger.warning(f"[{request_id}] Validation Error: {exc.errors()}")
+    metrics.ERROR_RATE.labels(error_code="VALIDATION_FAILED").inc()
     
     return JSONResponse(
         status_code=422,
@@ -48,6 +51,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 async def global_exception_handler(request: Request, exc: Exception):
     request_id = getattr(request.state, "request_id", None)
     logger.error(f"[{request_id}] Unhandled Exception: {str(exc)}", exc_info=True)
+    metrics.ERROR_RATE.labels(error_code="INTERNAL_ERROR").inc()
     
     return JSONResponse(
         status_code=500,
