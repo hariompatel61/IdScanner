@@ -12,7 +12,9 @@ Fields extracted:
 import re
 from typing import List
 from app.extractors.line_reconstructor import OCRLine
-from app.parsers.base import BaseDocParser, FieldResult, ParsedDocument
+from app.parsers.base import DocumentPlugin, DocumentSchema
+from app.parsers.registry import document_registry
+from app.parsers.base import FieldResult, ParsedDocument
 from app.core.config import settings
 from app.validators.field_validators import (
     validate_name,
@@ -22,7 +24,13 @@ from app.validators.field_validators import (
 from app.extractors.verhoeff import validate_verhoeff
 
 
-class FarmerIDParser(BaseDocParser):
+class FarmerIDPlugin(DocumentPlugin):
+    document_id = "farmer_id"
+    display_name = "Farmer ID"
+    aliases = ["farmer"]
+    supported_sides = ["front"]
+    schema = DocumentSchema(expected_fields=["name", "dob", "gender", "farmer_id"], mandatory_fields=["name", "dob", "gender"])
+
     MANDATORY_FIELDS = ["name", "gender", "dob"]
     OPTIONAL_FIELDS = ["mobile", "aadhaar_number"]
 
@@ -131,3 +139,6 @@ class FarmerIDParser(BaseDocParser):
                     return FieldResult(value=uid, confidence=round(line.confidence, 4), status=status)
 
         return FieldResult(value=None, confidence=0.0, status="not_found")
+
+FarmerIDParser = FarmerIDPlugin
+document_registry.register(FarmerIDPlugin())

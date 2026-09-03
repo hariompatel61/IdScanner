@@ -18,7 +18,9 @@ Fields extracted:
 import re
 from typing import List, Optional, Tuple
 from app.extractors.line_reconstructor import OCRLine
-from app.parsers.base import BaseDocParser, FieldResult, ParsedDocument
+from app.parsers.base import DocumentPlugin, DocumentSchema
+from app.parsers.registry import document_registry
+from app.parsers.base import FieldResult, ParsedDocument
 from app.core.config import settings
 from app.extractors.labels import LABELS, GENDER_MAP
 from app.validators.field_validators import (
@@ -31,7 +33,13 @@ from app.validators.field_validators import (
 )
 
 
-class PassportParser(BaseDocParser):
+class PassportPlugin(DocumentPlugin):
+    document_id = "passport"
+    display_name = "Passport"
+    aliases = ["passport"]
+    supported_sides = ["front"]
+    schema = DocumentSchema(expected_fields=["name", "dob", "gender", "passport_number", "surname", "given_name", "nationality", "date_of_issue", "date_of_expiry", "mrz"], mandatory_fields=["name", "dob", "gender", "passport_number"])
+
     MANDATORY_FIELDS = ["name", "gender", "dob"]
     OPTIONAL_FIELDS = ["surname", "given_name", "expiry_date", "nationality"]
 
@@ -271,3 +279,6 @@ class PassportParser(BaseDocParser):
                 return FieldResult(value="INDIAN", confidence=round(line.confidence, 4), status=status)
 
         return FieldResult(value=None, confidence=0.0, status="not_found")
+
+PassportParser = PassportPlugin
+document_registry.register(PassportPlugin())

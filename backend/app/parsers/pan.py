@@ -10,12 +10,24 @@ Fields extracted:
 import re
 from typing import List
 from app.extractors.line_reconstructor import OCRLine
-from app.parsers.base import BaseDocParser, FieldResult, ParsedDocument
+from app.parsers.base import DocumentPlugin, DocumentSchema, FieldResult, ParsedDocument
+from app.parsers.registry import document_registry
+
 from app.core.config import settings
 from app.validators.field_validators import validate_name, clean_name_text
 
+_PAN_PATTERN = re.compile(r'\b[A-Z]{5}[0-9]{4}[A-Z]\b', re.IGNORECASE)
 
-class PANParser(BaseDocParser):
+class PANPlugin(DocumentPlugin):
+    document_id = "pan_card"
+    display_name = "PAN Card"
+    aliases = ["pan"]
+    supported_sides = ["front"]
+    schema = DocumentSchema(
+        expected_fields=["name", "father_name", "dob", "pan_number"],
+        mandatory_fields=["name", "father_name", "dob"]
+    )
+    
     MANDATORY_FIELDS = ["name", "father_name", "dob"]
     OPTIONAL_FIELDS = []
 
@@ -86,4 +98,21 @@ class PANParser(BaseDocParser):
             fields["name"] = name_res
             fields["father_name"] = father_res
 
+        fields["pan_number"] = self._extract_pan_number(ocr_lines)
         return self._build_result(fields)
+
+    def _extract_pan_number(self, ocr_lines: List[OCRLine]) -> FieldResult:
+        best_value, best_conf = None, 0.0
+        for line in ocr_lines:
+            for match in _PAN_PATTERN.finditer(line.text):
+                val = match.group(0).upper()
+                if line.confidence > best_conf:
+                    best_conf = line.confidence
+                    best_value = val
+        if best_value:
+            status = "ok" if best_conf >= settings.field_confidence_threshold else "low_confidence"
+            return FieldResult(value=best_value, confidence=round(best_conf, 4), status=status)
+        return FieldResult(value=None, confidence=0.0, status="not_found")
+
+PANParser = PANPlugin
+document_registry.register(PANPlugin())

@@ -12,12 +12,23 @@ Fields extracted:
 import re
 from typing import List, Tuple, Optional
 from app.extractors.line_reconstructor import OCRLine
-from app.parsers.base import BaseDocParser, FieldResult, ParsedDocument
+from app.parsers.base import DocumentPlugin, DocumentSchema, FieldResult, ParsedDocument
+from app.parsers.registry import document_registry
 from app.core.config import settings
 from app.validators.field_validators import validate_name, clean_name_text
 
+_VOTER_ID_PATTERN = re.compile(r'\b([A-Z]{3}[0-9]{7})\b')
 
-class VoterIDParser(BaseDocParser):
+class VoterIDPlugin(DocumentPlugin):
+    document_id = "voter_id"
+    display_name = "Voter ID"
+    aliases = ["voter"]
+    supported_sides = ["front"]
+    schema = DocumentSchema(
+        expected_fields=["name", "relation_name", "relation_type", "dob", "gender", "voter_id"],
+        mandatory_fields=["name", "relation_name"]
+    )
+    
     MANDATORY_FIELDS = ["name", "relation_name"]
     OPTIONAL_FIELDS = ["gender", "dob", "relation_type"]
 
@@ -48,6 +59,7 @@ class VoterIDParser(BaseDocParser):
         # 5. Extract DOB or Age (if present)
         fields["dob"] = self._extract_dob_or_age(ocr_lines)
 
+        fields["voter_id"] = self._extract_voter_id_number(ocr_lines)
         return self._build_result(fields)
 
     def _extract_elector_name(self, ocr_lines: List[OCRLine], relation_val: str = None) -> FieldResult:
@@ -235,3 +247,18 @@ class VoterIDParser(BaseDocParser):
                     return FieldResult(value=age_str, confidence=round(line.confidence, 4), status=status)
 
         return FieldResult(value=None, confidence=0.0, status="not_found")
+    def _extract_voter_id_number(self, ocr_lines: List[OCRLine]) -> FieldResult:
+        best_value, best_conf = None, 0.0
+        for line in ocr_lines:
+            for match in _VOTER_ID_PATTERN.finditer(line.text):
+                val = match.group(0).upper()
+                if line.confidence > best_conf:
+                    best_conf = line.confidence
+                    best_value = val
+        if best_value:
+            status = "ok" if best_conf >= settings.field_confidence_threshold else "low_confidence"
+            return FieldResult(value=best_value, confidence=round(best_conf, 4), status=status)
+        return FieldResult(value=None, confidence=0.0, status="not_found")
+
+VoterIDParser = VoterIDPlugin
+document_registry.register(VoterIDPlugin())

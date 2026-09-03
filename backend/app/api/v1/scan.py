@@ -180,10 +180,22 @@ async def scan_document(
 
     # 4. Determine Extractor Strategy
     target_doc_type = (document_type or "").strip().lower()
-    if target_doc_type and target_doc_type in EXTRACTOR_MAP:
-        selected_extractors = [EXTRACTOR_MAP[target_doc_type]]
+    
+    # We maintain the legacy extractor list for fallback logic
+    all_legacy_exts = [_aadhaar_ext, _aadhaar_back_ext, _pan_ext, _voter_ext, _abha_ext, _farmer_ext, _passport_ext]
+    
+    if target_doc_type and document_registry.supports(target_doc_type):
+        target_plugin = document_registry.get(target_doc_type)
+        if target_plugin.document_id == "aadhaar_card": selected_extractors = [_aadhaar_ext]
+        elif target_plugin.document_id == "aadhaar_card_back": selected_extractors = [_aadhaar_back_ext]
+        elif target_plugin.document_id == "pan_card": selected_extractors = [_pan_ext]
+        elif target_plugin.document_id == "voter_id": selected_extractors = [_voter_ext]
+        elif target_plugin.document_id == "abha_card": selected_extractors = [_abha_ext]
+        elif target_plugin.document_id == "farmer_id": selected_extractors = [_farmer_ext]
+        elif target_plugin.document_id == "passport": selected_extractors = [_passport_ext]
+        else: selected_extractors = all_legacy_exts
     else:
-        selected_extractors = [_aadhaar_ext, _aadhaar_back_ext, _pan_ext, _voter_ext, _abha_ext, _farmer_ext, _passport_ext]
+        selected_extractors = all_legacy_exts
 
     # 5. OCR Processing (Pass 1 - Fast Primary Pass)
     raw_results = ocr_engine.process_image(img, apply_adaptive_threshold=False)
@@ -259,7 +271,7 @@ async def scan_document(
         # mandatory. If any field is unreadable, return rescan_required so the
         # user captures a clearer image instead of receiving partial data.
         overall_status = "ok"
-        parser = PARSER_MAP.get(doc_type)
+        parser = document_registry.get(doc_type)
         if parser:
             try:
                 sorted_lines = reconstruct_lines(best_raw_results)

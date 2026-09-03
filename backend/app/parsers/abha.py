@@ -11,12 +11,20 @@ Fields extracted:
 import re
 from typing import List
 from app.extractors.line_reconstructor import OCRLine
-from app.parsers.base import BaseDocParser, FieldResult, ParsedDocument
+from app.parsers.base import DocumentPlugin, DocumentSchema
+from app.parsers.registry import document_registry
+from app.parsers.base import FieldResult, ParsedDocument
 from app.core.config import settings
 from app.validators.field_validators import validate_name, clean_name_text, validate_mobile, normalize_mobile
 
 
-class ABHAParser(BaseDocParser):
+class ABHAPlugin(DocumentPlugin):
+    document_id = "abha_card"
+    display_name = "ABHA Card"
+    aliases = ["abha"]
+    supported_sides = ["front"]
+    schema = DocumentSchema(expected_fields=["name", "abha_number", "dob", "gender", "mobile", "abha_address"], mandatory_fields=["name", "abha_number", "dob", "gender"])
+
     MANDATORY_FIELDS = ["name", "gender", "dob"]
     OPTIONAL_FIELDS = ["mobile"]
 
@@ -35,6 +43,7 @@ class ABHAParser(BaseDocParser):
         # 4. Extract Mobile Number (optional, unmasked only)
         fields["mobile"] = self._extract_mobile(ocr_lines)
 
+        fields["abha_number"] = self._extract_abha_number(ocr_lines)
         return self._build_result(fields)
 
     # Relation prefix lines to always skip
@@ -144,3 +153,21 @@ class ABHAParser(BaseDocParser):
                     return FieldResult(value=candidate, confidence=round(line.confidence, 4), status=status)
 
         return FieldResult(value=None, confidence=0.0, status="not_found")
+
+    def _extract_abha_number(self, ocr_lines):
+        import re
+        _ABHA_NUMBER_PATTERN = re.compile(r"\b(\d{2})[\s\-]?(\d{4})[\s\-]?(\d{4})[\s\-]?(\d{4})\b")
+        best_value, best_conf = None, 0.0
+        for line in ocr_lines:
+            for match in _ABHA_NUMBER_PATTERN.finditer(line.text):
+                val = match.group(0)
+                if line.confidence > best_conf:
+                    best_conf = line.confidence
+                    best_value = val
+        if best_value:
+            status = "ok" if best_conf >= settings.field_confidence_threshold else "low_confidence"
+            return FieldResult(value=best_value, confidence=round(best_conf, 4), status=status)
+        return FieldResult(value=None, confidence=0.0, status="not_found")
+
+ABHAParser = ABHAPlugin
+document_registry.register(ABHAPlugin())

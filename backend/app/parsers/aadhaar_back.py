@@ -18,7 +18,9 @@ Follows strict 'no guessing' rules:
 import re
 from typing import List, Optional, Tuple, Dict
 from app.extractors.line_reconstructor import OCRLine
-from app.parsers.base import BaseDocParser, FieldResult, ParsedDocument
+from app.parsers.base import DocumentPlugin, DocumentSchema
+from app.parsers.registry import document_registry
+from app.parsers.base import FieldResult, ParsedDocument
 from app.extractors.verhoeff import validate_verhoeff
 from app.core.config import settings
 from app.validators.field_validators import (
@@ -133,7 +135,16 @@ def contains_footer_text(text: str) -> bool:
     return False
 
 
-class AadhaarBackParser(BaseDocParser):
+class AadhaarBackPlugin(DocumentPlugin):
+    document_id = "aadhaar_card_back"
+    display_name = "Aadhaar Card Back"
+    aliases = ["aadhaar_back"]
+    supported_sides = ["back"]
+    schema = DocumentSchema(
+        expected_fields=["aadhaar_number", "address", "state", "pincode", "relation_type", "relation_name"],
+        mandatory_fields=["aadhaar_number", "address", "state", "pincode"]
+    )
+    
     MANDATORY_FIELDS = ["aadhaar_number", "address", "state", "pincode"]
     OPTIONAL_FIELDS = ["relation_type", "relation_name"]
 
@@ -426,3 +437,6 @@ class AadhaarBackParser(BaseDocParser):
             return FieldResult(value=None, confidence=round(avg_conf, 4), status="low_confidence")
 
         return FieldResult(value=cleaned, confidence=round(avg_conf, 4), status="ok")
+
+AadhaarBackParser = AadhaarBackPlugin
+document_registry.register(AadhaarBackPlugin())
