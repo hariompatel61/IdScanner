@@ -5,12 +5,19 @@ import { ScannerOverlay } from './ScannerOverlay';
 import { ScannerHUD } from './ScannerHUD';
 import { ScanResultCard } from './ScanResultCard';
 import { ScannerState } from '../types';
-import type { WorkerAnalysisResult, ScanApiResponse } from '../types';
+import type { CaptureQuality, WorkerAnalysisResult, ScanApiResponse } from '../types';
+import { DEFAULT_CAPTURE_QUALITY_CONFIG } from '../cv/captureQuality';
 
-export const ScannerContainer: React.FC = () => {
+interface ScannerContainerProps {
+  /** Defaults to enabled; hosts can opt out while retaining manual capture. */
+  autoCaptureEnabled?: boolean;
+}
+
+export const ScannerContainer: React.FC<ScannerContainerProps> = ({ autoCaptureEnabled = true }) => {
   const [state, setState] = useState<ScannerState>(ScannerState.INITIALIZING);
   const consecutiveStableRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const captureInFlightRef = useRef(false);
 
   const { startCamera, stopCamera, isActive, error, videoRef } = useCamera({
     idealWidth: 1280,
@@ -42,6 +49,7 @@ export const ScannerContainer: React.FC = () => {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [scanResponse, setScanResponse] = useState<ScanApiResponse | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [captureQuality, setCaptureQuality] = useState<CaptureQuality | null>(null);
 
   const sendImageToBackend = useCallback(async (blobOrFile: Blob, previewUrl?: string) => {
     if (previewUrl) {
@@ -79,15 +87,22 @@ export const ScannerContainer: React.FC = () => {
       console.error("API scan error:", err);
       setApiError("Unable to reach scanner service. Please verify your connection.");
       setState(ScannerState.RESCAN_REQUIRED);
+    } finally {
+      // The camera remains stopped until the user starts the next scan, but a
+      // failed or completed upload must never leave the capture gate locked.
+      captureInFlightRef.current = false;
     }
   }, [stopCamera]);
 
   const captureHighResFrame = useCallback(async () => {
+    if (captureInFlightRef.current) return;
+    captureInFlightRef.current = true;
     setState(ScannerState.CAPTURING);
     setApiError(null);
 
     const video = videoRef.current;
     if (!video) {
+      captureInFlightRef.current = false;
       stopCamera();
       setState(ScannerState.ERROR);
       return;
@@ -96,6 +111,7 @@ export const ScannerContainer: React.FC = () => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     if (!ctx) {
+      captureInFlightRef.current = false;
       stopCamera();
       setState(ScannerState.ERROR);
       return;
@@ -151,6 +167,10 @@ export const ScannerContainer: React.FC = () => {
     canvas.toBlob((blob) => {
       if (blob) {
         sendImageToBackend(blob);
+      } else {
+        captureInFlightRef.current = false;
+        setApiError('Unable to prepare the camera frame. Please try again.');
+        setState(ScannerState.ERROR);
       }
     }, 'image/jpeg', 0.92);
   }, [stopCamera, videoRef, sendImageToBackend]);
@@ -159,10 +179,17 @@ export const ScannerContainer: React.FC = () => {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    if (captureInFlightRef.current) return;
+    captureInFlightRef.current = true;
     const reader = new FileReader();
     reader.onload = (event) => {
       const previewUrl = event.target?.result as string;
       sendImageToBackend(file, previewUrl);
+    };
+    reader.onerror = () => {
+      captureInFlightRef.current = false;
+      setApiError('Unable to read the selected image. Please choose another file.');
+      setState(ScannerState.ERROR);
     };
     reader.readAsDataURL(file);
   }, [sendImageToBackend]);
@@ -182,8 +209,9 @@ export const ScannerContainer: React.FC = () => {
       return;
     }
 
-    if (result.reason === 'WORKER_INITIALIZING') return;
-    if (result.reason === 'CV_ERROR') {
+    if (result.quality) setCaptureQuality(result.quality);
+    if (result.reason === 'WORKER_ERROR') {
+      captureInFlightRef.current = false;
       setState(ScannerState.ERROR);
       return;
     }
@@ -191,7 +219,10 @@ export const ScannerContainer: React.FC = () => {
     const now = Date.now();
     const timeSinceLastChange = now - lastStateChange.current;
 
-    if (result.overallQuality >= 1.0 && result.reason === 'READY_TO_CAPTURE') {
+    const readyForCapture = result.quality ? result.quality.ready : result.overallQuality >= 1.0 && result.reason === 'READY_TO_CAPTURE';
+    // `quality.ready` is the Worker-authoritative decision. It already
+    // includes the configured stability-window confirmation and quality gates.
+    if (autoCaptureEnabled && readyForCapture && !captureInFlightRef.current) {
       captureHighResFrame();
     } else if (result.detected && result.stabilityScore > 0) {
       if (state !== ScannerState.HOLD_STEADY && timeSinceLastChange > 300) {
@@ -209,17 +240,15 @@ export const ScannerContainer: React.FC = () => {
         lastStateChange.current = now;
       }
     }
-  }, [state, captureHighResFrame]);
-
-  const handleManualCapture = useCallback(() => {
-    captureHighResFrame();
-  }, [captureHighResFrame]);
+  }, [state, captureHighResFrame, autoCaptureEnabled]);
 
   const handleRescan = useCallback(() => {
     consecutiveStableRef.current = 0;
+    captureInFlightRef.current = false;
     setCapturedImage(null);
     setScanResponse(null);
     setApiError(null);
+    setCaptureQuality(null);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -247,6 +276,7 @@ export const ScannerContainer: React.FC = () => {
         onWorkerResult={handleWorkerResult}
         fpsLimit={8}
         isCapturing={isCapturingOrProcessing}
+        qualityConfig={DEFAULT_CAPTURE_QUALITY_CONFIG}
       />
 
       {/* Overlay Mask Layer */}
@@ -257,9 +287,10 @@ export const ScannerContainer: React.FC = () => {
         <ScannerHUD
           state={state}
           cameraError={error}
-          onManualCapture={handleManualCapture}
           onRescan={handleRescan}
           onUploadFile={triggerFileUpload}
+          captureQuality={captureQuality}
+          autoCaptureEnabled={autoCaptureEnabled}
         />
       )}
 

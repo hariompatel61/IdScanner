@@ -1,12 +1,14 @@
 """
 Aadhaar Card Parser — Extracts structured fields from Aadhaar card OCR output.
 
-Fields extracted:
-    - Name (mandatory)
-    - DOB (mandatory)
-    - Gender (mandatory)
+Fields extracted (ALL mandatory for front-side capture):
+    - Name
+    - DOB
+    - Gender
+    - Aadhaar Number (12-digit, Verhoeff-validated)
 
-VID is NOT extracted per project requirements.
+If any field is missing or low-confidence, overall_status = 'rescan_required'
+and the frontend will reject the scan rather than returning partial data.
 """
 
 import re
@@ -15,10 +17,15 @@ from app.extractors.line_reconstructor import OCRLine
 from app.parsers.base import BaseDocParser, FieldResult, ParsedDocument
 from app.core.config import settings
 from app.validators.field_validators import validate_name, clean_name_text
+from app.extractors.verhoeff import validate_verhoeff
+
+_DIGITS_ONLY_RE = re.compile(r'[^\d]')
+_OO_SWAP_RE = re.compile(r'[Oo]')
+_AADHAAR_NUM_RE = re.compile(r'\b(\d{4})[\s\-]?[Oo0]?[\s\-]?(\d{4})[\s\-]?[Oo0]?[\s\-]?(\d{4})\b')
 
 
 class AadhaarParser(BaseDocParser):
-    MANDATORY_FIELDS = ["name", "dob", "gender"]
+    MANDATORY_FIELDS = ["name", "dob", "gender", "aadhaar_number"]
     OPTIONAL_FIELDS = []
 
     def extract_fields(self, ocr_lines: List[OCRLine]) -> ParsedDocument:
@@ -40,7 +47,28 @@ class AadhaarParser(BaseDocParser):
                 name_res = heur_res
         fields["name"] = name_res
 
+        # 4. Extract Aadhaar Number (12-digit, Verhoeff-validated)
+        # This ensures ALL four mandatory fields go through _build_result's
+        # confidence gate — a blurry/unreadable number triggers rescan_required.
+        fields["aadhaar_number"] = self._extract_aadhaar_number(ocr_lines)
+
         return self._build_result(fields)
+
+    def _extract_aadhaar_number(self, ocr_lines: List[OCRLine]) -> FieldResult:
+        """Extract and Verhoeff-validate the 12-digit Aadhaar number."""
+        best_value = None
+        best_conf = 0.0
+        for line in ocr_lines:
+            for match in _AADHAAR_NUM_RE.finditer(line.text):
+                raw = _DIGITS_ONLY_RE.sub('', _OO_SWAP_RE.sub('0', match.group(0)))
+                if len(raw) == 12 and validate_verhoeff(raw):
+                    if line.confidence > best_conf:
+                        best_conf = line.confidence
+                        best_value = raw
+        if best_value:
+            status = "ok" if best_conf >= settings.field_confidence_threshold else "low_confidence"
+            return FieldResult(value=best_value, confidence=round(best_conf, 4), status=status)
+        return FieldResult(value=None, confidence=0.0, status="not_found")
 
     def _aadhaar_name_heuristic(self, ocr_lines: List[OCRLine]) -> FieldResult:
         """

@@ -8,6 +8,16 @@ class Settings(BaseSettings):
     api_token: Optional[str] = None  # Server-to-server Bearer Token (e.g., "secure_api_token_99812")
     max_image_size_mb: int = 5
     max_image_dimension: int = 960  # Optimized resolution bound for 150ms OCR latency
+    max_image_width: int = 4096
+    max_image_height: int = 4096
+    max_image_pixels: int = 12_000_000
+    preprocess_max_dimension: int = 960
+    preprocess_min_ocr_dimension: int = 600
+    preprocess_crop_padding_ratio: float = 0.02
+    preprocess_min_crop_dimension: int = 160
+    preprocess_min_document_area_ratio: float = 0.20
+    preprocess_max_document_area_ratio: float = 0.95
+    preprocess_enable_enhancement: bool = True
     ocr_device: str = "cpu"
     ocr_workers: int = 4
     high_confidence_threshold: float = 0.80
