@@ -65,6 +65,7 @@ Desktop.ini
 # Logs & Runtime Dumps
 *.log
 backend/logs/*.log
+backend/logs/*.jsonl
 *.tmp
 *.bak
 
