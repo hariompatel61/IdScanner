@@ -60,12 +60,20 @@ class VoterIDParser(BaseDocParser):
                         status = "ok" if line.confidence >= settings.field_confidence_threshold else "low_confidence"
                         return FieldResult(value=cleaned, confidence=round(line.confidence, 4), status=status)
                 # If name is below the label
+                candidates = []
+                anchor_x = line.x_start
                 for next_idx in range(idx + 1, min(idx + 4, len(ocr_lines))):
-                    sub_cleaned = clean_name_text(ocr_lines[next_idx].text)
+                    next_line = ocr_lines[next_idx]
+                    sub_cleaned = clean_name_text(next_line.text)
                     if sub_cleaned and validate_name(sub_cleaned):
                         if not relation_val or sub_cleaned != relation_val:
-                            status = "ok" if ocr_lines[next_idx].confidence >= settings.field_confidence_threshold else "low_confidence"
-                            return FieldResult(value=sub_cleaned, confidence=round(ocr_lines[next_idx].confidence, 4), status=status)
+                            dist = abs(next_line.x_start - anchor_x)
+                            candidates.append((dist, sub_cleaned, next_line.confidence))
+                if candidates:
+                    candidates.sort(key=lambda c: c[0])
+                    best_dist, best_val, best_conf = candidates[0]
+                    status = "ok" if best_conf >= settings.field_confidence_threshold else "low_confidence"
+                    return FieldResult(value=best_val, confidence=round(best_conf, 4), status=status)
 
         # 2. Explicit "Name:" line (that is NOT a relation line)
         for idx, line in enumerate(ocr_lines):
@@ -123,6 +131,7 @@ class VoterIDParser(BaseDocParser):
 
     def _find_relation_value(self, ocr_lines: List[OCRLine], idx: int, rel_type: str) -> Optional[FieldResult]:
         line = ocr_lines[idx]
+        anchor_x = line.x_start
         # 1. Try extracting value on same line
         cleaned = clean_name_text(line.text)
         if cleaned and validate_name(cleaned):
@@ -130,12 +139,19 @@ class VoterIDParser(BaseDocParser):
             return FieldResult(value=cleaned, confidence=round(line.confidence, 4), status=status)
 
         # 2. If same line is purely label (e.g. "MotherName", "Mother's Name"), check lines below it
+        candidates = []
         for next_idx in range(idx + 1, min(idx + 4, len(ocr_lines))):
             next_line = ocr_lines[next_idx]
             sub_cleaned = clean_name_text(next_line.text)
             if sub_cleaned and validate_name(sub_cleaned):
-                status = "ok" if next_line.confidence >= settings.field_confidence_threshold else "low_confidence"
-                return FieldResult(value=sub_cleaned, confidence=round(next_line.confidence, 4), status=status)
+                dist = abs(next_line.x_start - anchor_x)
+                candidates.append((dist, sub_cleaned, next_line.confidence))
+                
+        if candidates:
+            candidates.sort(key=lambda c: c[0])
+            best_dist, best_val, best_conf = candidates[0]
+            status = "ok" if best_conf >= settings.field_confidence_threshold else "low_confidence"
+            return FieldResult(value=best_val, confidence=round(best_conf, 4), status=status)
 
         return None
 
