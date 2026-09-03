@@ -65,14 +65,13 @@ PRIMARY_SURNAMES = [
     "AGARWAL", "BANSAL", "MITTAL", "GOEL", "GARG", "JINDAL", "SINGHAL", "KHAN",
     "ALI", "AHMED", "SHEIKH", "ANSARI", "SIDDIQUI", "QURESHI", "MALIK", "REDDY",
     "RAO", "NAIDU", "GOUD", "CHOWDARY", "RAJU", "SHETTY", "HEGDE", "NAIR",
-    "MENON", "PILLAI", "KURUP", "NAMBIAR", "DAS", "ROY", "GHOSH", "DUTTA",
-    "SEN", "BOSE", "DEY", "SAHA", "SARKAR", "PATIL", "SHINDE", "PAWAR",
+    "MENON", "PILLAI", "KURUP", "NAMBIAR", "DAS", "ROY", "GHOSH", "DUTTA", "BOSE", "SAHA", "SARKAR", "PATIL", "SHINDE", "PAWAR",
     "GAIKWAD", "CHAVAN", "JADHAV", "MORE", "KALE", "KADAM", "SAWANT", "RAUT",
     "THAKUR", "RATHORE", "CHAUHAN", "RAJPUT", "RAWAT", "NEGI", "BISHT", "MAHATO",
     "PASWAN", "MANJHI", "SAHU", "SAHOO", "PRADHAN", "NAYAK", "BEHERA", "SWAIN",
     "RANA", "DAREKAR", "SMITH", "BROWN", "JONES", "GARCIA", "MILLER", "DAVIS",
     "KUMARI", "DEVI", "BAI", "BEN", "LATA", "RANI", "KAUR", "BANO", "BEGUM",
-    "KUMAR", "PRASAD", "CHANDRA", "PRAKASH", "LAL", "RAM", "DEV", "RAJ", "PAL", "JHA"
+    "KUMAR", "PRASAD", "CHANDRA", "PRAKASH", "LAL", "DEV", "PAL", "JHA"
 ]
 
 # Pre-sorted surname tuple for recursive unspaced suffix splitting
@@ -95,7 +94,7 @@ _CAMEL_CASE_RE = re.compile(r'([a-z])([A-Z])')
 _NON_LETTER_RE = re.compile(r'[^a-zA-Z\u0900-\u097F\s]')
 _WHITESPACE_RE = re.compile(r'\s+')
 _DIGIT_RE = re.compile(r'\d')
-_DISTORTED_AUTHORITY_RE = re.compile(r'(?:wity|ofindia|oftndia|oflndia|authorityof|identificalion|authorityoftndia)', re.I)
+_DISTORTED_AUTHORITY_RE = re.compile(r'(?:wity|ofindia|oftndia|oflndia|authorityof|identificalion|authorityoftndia|elector|relation|identit|commission|election)', re.I)
 _DATE_FULL_RE = re.compile(r'^(\d{1,2})/(\d{1,2})/(\d{4})$')
 _YEAR_ONLY_RE = re.compile(r'^(\d{4})$')
 _DATE_SEARCH_RE = re.compile(r'\b(\d{1,2})[/\-\.](\d{1,2})[/\-\.](\d{4})\b')
