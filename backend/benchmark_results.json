@@ -1,0 +1,193 @@
+{
+  "samples": 30,
+  "classification": {
+    "correct": 20,
+    "false": 0,
+    "ambiguous": 10
+  },
+  "fields": {
+    "name": {
+      "exact": 14,
+      "normalized": 14,
+      "total": 25,
+      "missing": 10,
+      "incorrect": 1
+    },
+    "dob": {
+      "exact": 20,
+      "normalized": 20,
+      "total": 20,
+      "missing": 0,
+      "incorrect": 0
+    },
+    "gender": {
+      "exact": 4,
+      "normalized": 9,
+      "total": 20,
+      "missing": 11,
+      "incorrect": 5
+    },
+    "aadhaar_number": {
+      "exact": 5,
+      "normalized": 5,
+      "total": 5,
+      "missing": 0,
+      "incorrect": 0
+    },
+    "abha_number": {
+      "exact": 0,
+      "normalized": 0,
+      "total": 5,
+      "missing": 5,
+      "incorrect": 0
+    },
+    "yob": {
+      "exact": 0,
+      "normalized": 0,
+      "total": 5,
+      "missing": 5,
+      "incorrect": 0
+    },
+    "fathers_name": {
+      "exact": 0,
+      "normalized": 0,
+      "total": 10,
+      "missing": 10,
+      "incorrect": 0
+    },
+    "farmer_id": {
+      "exact": 0,
+      "normalized": 0,
+      "total": 5,
+      "missing": 5,
+      "incorrect": 0
+    },
+    "pan_number": {
+      "exact": 5,
+      "normalized": 5,
+      "total": 5,
+      "missing": 0,
+      "incorrect": 0
+    },
+    "given_name": {
+      "exact": 3,
+      "normalized": 3,
+      "total": 5,
+      "missing": 2,
+      "incorrect": 0
+    },
+    "surname": {
+      "exact": 5,
+      "normalized": 5,
+      "total": 5,
+      "missing": 0,
+      "incorrect": 0
+    },
+    "passport_number": {
+      "exact": 5,
+      "normalized": 5,
+      "total": 5,
+      "missing": 0,
+      "incorrect": 0
+    },
+    "relation_name": {
+      "exact": 4,
+      "normalized": 4,
+      "total": 5,
+      "missing": 0,
+      "incorrect": 1
+    },
+    "relation_type": {
+      "exact": 5,
+      "normalized": 5,
+      "total": 5,
+      "missing": 0,
+      "incorrect": 0
+    },
+    "voter_id": {
+      "exact": 5,
+      "normalized": 5,
+      "total": 5,
+      "missing": 0,
+      "incorrect": 0
+    }
+  },
+  "validation": {
+    "false_accept": 8,
+    "false_reject": 6,
+    "correct": 16
+  },
+  "decisions": {
+    "ACCEPT": 14,
+    "REVIEW": 1,
+    "RECAPTURE": 5,
+    "INVALID": 10
+  },
+  "latencies": {
+    "total": [
+      2405.0719999941066,
+      2676.2676000071224,
+      2739.772400003858,
+      2037.0970999938436,
+      2751.535299990792,
+      2198.305199999595,
+      3304.548000000068,
+      2475.588899993454,
+      2659.3321000109427,
+      3249.947600008454,
+      11307.805399992503,
+      25013.07600000291,
+      33056.50120000064,
+      35546.685599998455,
+      31341.55880000617,
+      7168.446799987578,
+      9537.489399997867,
+      6142.403599995305,
+      7386.421600007452,
+      6159.501100002672,
+      4227.3489000072,
+      7650.113800002146,
+      5105.997699996806,
+      4501.639000009163,
+      3566.60120000015,
+      5125.9841000137385,
+      4905.849100003252,
+      9217.225900007179,
+      8261.503499990795,
+      9138.05219999631
+    ],
+    "api": [
+      2303,
+      2627,
+      2674,
+      2017,
+      2726,
+      2175,
+      3249,
+      2418,
+      2617,
+      3166,
+      11248,
+      24925,
+      33036,
+      34732,
+      31254,
+      7114,
+      9488,
+      5954,
+      7353,
+      5934,
+      3924,
+      7312,
+      4948,
+      4314,
+      3442,
+      5089,
+      4867,
+      9118,
+      8206,
+      9108
+    ]
+  },
+  "failures": []
+}

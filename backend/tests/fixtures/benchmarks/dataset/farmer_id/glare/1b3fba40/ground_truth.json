@@ -1,0 +1,10 @@
+{
+  "document_type": "farmer_id",
+  "condition": "glare",
+  "expected_fields": {
+    "name": "Jim Halpert",
+    "fathers_name": "Gerald Halpert",
+    "farmer_id": "FRM-987654"
+  },
+  "expected_status": "REVIEW"
+}

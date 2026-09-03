@@ -1,0 +1,13 @@
+{
+  "document_type": "voter_id",
+  "condition": "low_light",
+  "expected_fields": {
+    "name": "Michael Scott",
+    "relation_name": "Edward Scott",
+    "relation_type": "Father",
+    "gender": "Male",
+    "dob": "20/06/1980",
+    "voter_id": "XYZ1234567"
+  },
+  "expected_status": "REVIEW"
+}

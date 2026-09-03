@@ -1,0 +1,12 @@
+{
+  "document_type": "passport",
+  "condition": "low_light",
+  "expected_fields": {
+    "given_name": "Pamela",
+    "surname": "Beesly",
+    "passport_number": "Z1234567",
+    "dob": "15/10/1985",
+    "gender": "F"
+  },
+  "expected_status": "REVIEW"
+}

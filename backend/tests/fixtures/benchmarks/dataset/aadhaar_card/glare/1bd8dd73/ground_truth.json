@@ -1,0 +1,11 @@
+{
+  "document_type": "aadhaar_card",
+  "condition": "glare",
+  "expected_fields": {
+    "name": "John Doe",
+    "dob": "01/01/1990",
+    "gender": "MALE",
+    "aadhaar_number": "123456789010"
+  },
+  "expected_status": "REVIEW"
+}

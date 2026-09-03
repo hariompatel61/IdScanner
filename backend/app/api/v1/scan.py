@@ -20,6 +20,7 @@ from app.extractors.regex import (
     PassportExtractor,
 )
 from app.extractors.line_reconstructor import reconstruct_lines
+from app.parsers.registry import document_registry
 from app.parsers.aadhaar import AadhaarParser
 from app.parsers.aadhaar_back import AadhaarBackParser
 from app.parsers.pan import PANParser
@@ -261,7 +262,7 @@ async def scan_document(
     processing_time_ms = int((time.time() - start_time) * 1000)
 
     # 8. Evaluation & Response Generation
-    if best_doc_result and best_doc_conf >= settings.high_confidence_threshold:
+    if best_doc_result and best_doc_conf >= settings.retry_threshold:
         raw_doc_type = best_doc_result["document_type"].lower()
         doc_type = DOC_TYPE_NORMAL_MAP.get(raw_doc_type, raw_doc_type)
         identifier = best_doc_result["identifier"]

@@ -1,0 +1,11 @@
+{
+  "document_type": "pan_card",
+  "condition": "clean",
+  "expected_fields": {
+    "name": "Jane Smith",
+    "fathers_name": "Robert Smith",
+    "dob": "15/05/1985",
+    "pan_number": "ABCDE1234F"
+  },
+  "expected_status": "ACCEPT"
+}

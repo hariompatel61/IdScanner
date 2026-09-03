@@ -1,0 +1,11 @@
+{
+  "document_type": "abha_card",
+  "condition": "glare",
+  "expected_fields": {
+    "name": "Dwight Schrute",
+    "abha_number": "12-3456-7890-1234",
+    "yob": "1978",
+    "gender": "M"
+  },
+  "expected_status": "REVIEW"
+}
