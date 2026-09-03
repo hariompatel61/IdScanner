@@ -72,7 +72,8 @@ class TestSafeImageDecode:
             decode_image_bytes(jpeg_bytes(document_image()), "image/jpeg", config(max_upload_bytes=10))
 
     def test_rejects_huge_pixel_header_before_full_decode(self):
-        content = b"\x89PNG\r\n\x1a\n" + struct.pack(">IIBBBBB", 100_000, 100_000, 8, 2, 0, 0, 0)
+        # Magic (8) + Chunk Length (4) + 'IHDR' (4) + Width (4) + Height (4)
+        content = b"\x89PNG\r\n\x1a\n" + struct.pack(">I", 13) + b"IHDR" + struct.pack(">II", 100_000, 100_000)
         with pytest.raises(ImageDecodeError, match="image_dimensions_exceeded|image_pixel_limit_exceeded"):
             decode_image_bytes(content, "image/png", config())
 
@@ -156,7 +157,7 @@ class TestCropResizeAndAdaptiveProcessing:
         _, steps = adaptive_enhance(noise, config())
         assert "controlled_denoise" in steps
 
-    def test_preprocessing_falls_back_to_a_separate_original_copy_on_internal_failure(monkeypatch):
+    def test_preprocessing_falls_back_to_a_separate_original_copy_on_internal_failure(self, monkeypatch):
         monkeypatch.setattr(pipeline, "estimate_document_corners", lambda *_: (_ for _ in ()).throw(RuntimeError("forced")))
         image = document_image()
         result = preprocess_document_image(image, config())

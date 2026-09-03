@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     field_confidence_threshold: float = 0.70  # Per-field low-confidence cutoff for structured extraction
     line_merge_y_tolerance: int = 15  # Pixel tolerance for grouping OCR boxes into horizontal bands
     
+    # Phase 6 Limits
+    max_upload_size_bytes: int = 10 * 1024 * 1024 # 10MB
+    rate_limit_requests: int = 100
+    rate_limit_window: int = 60 # seconds
+    max_concurrent_ocr: int = 2 # CPU bounds protect
+    auth_required: bool = False
+    
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
 settings = Settings()

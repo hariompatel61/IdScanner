@@ -29,5 +29,4 @@ def test_scan_invalid_file_type():
     files = {'file': ('test.txt', b'fake data', 'text/plain')}
     response = client.post("/api/v1/scan", files=files)
     assert response.status_code == 415
-    assert response.json()["detail"] == "Unsupported media type. Use JPEG, PNG, or WEBP."
-
+    assert response.json()["error"]["message"] == "Unsupported media type. Use JPEG, PNG, or WEBP."

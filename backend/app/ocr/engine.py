@@ -91,5 +91,22 @@ class RapidOCREngine:
 
         return parsed_results
 
+    async def process_image_async(self, img_array: np.ndarray, apply_adaptive_threshold: bool = False) -> List[Dict[str, Any]]:
+        """
+        Asynchronously executes OCR inference with concurrency protection and timeout.
+        """
+        import asyncio
+        if not hasattr(self, '_semaphore'):
+            self._semaphore = asyncio.Semaphore(settings.max_concurrent_ocr)
+            
+        try:
+            async with self._semaphore:
+                return await asyncio.wait_for(
+                    asyncio.to_thread(self.process_image, img_array, apply_adaptive_threshold),
+                    timeout=settings.api_timeout_seconds
+                )
+        except asyncio.TimeoutError:
+            raise TimeoutError("OCR Processing Timeout")
+
 # Singleton Instance initialized once across application lifecycle
 ocr_engine = RapidOCREngine()

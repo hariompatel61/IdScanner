@@ -6,6 +6,12 @@ import logging
 
 from app.core.config import settings
 from app.ocr.engine import ocr_engine
+from app.api.middlewares.request_id import RequestIDMiddleware
+from app.api.middlewares.security import SecurityHeadersMiddleware
+from app.api.errors import api_error_handler, validation_exception_handler, global_exception_handler, APIError
+from fastapi.exceptions import RequestValidationError
+from app.api.readiness import router as readiness_router
+from app.api.metadata import router as metadata_router
 from app.api.health import router as health_router
 from app.api.v1.scan import router as scan_router
 
@@ -31,17 +37,25 @@ app = FastAPI(
     redoc_url=None
 )
 
+app.add_exception_handler(APIError, api_error_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(Exception, global_exception_handler)
+
 # CORS configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestIDMiddleware)
 
 # Include routers
 app.include_router(health_router, tags=["Health"])
+app.include_router(readiness_router, tags=["Health"])
+app.include_router(metadata_router, tags=["Metadata"])
 app.include_router(scan_router, prefix="/api/v1", tags=["Scan"])
 
 if __name__ == "__main__":

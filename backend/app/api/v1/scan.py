@@ -137,24 +137,30 @@ async def clear_scan_logs(auth: bool = Depends(verify_api_token)):
     return {"success": True, "message": "Scan history cleared."}
 
 
-@router.post("/scan", response_model=ScanResponse, response_model_exclude_none=True, summary="Perform Document OCR and Field Extraction")
+from app.api.dependencies.rate_limit import verify_rate_limit
+from app.api.dependencies.auth import verify_api_key
+from app.api.errors import APIError
+
+@router.post("/scan", response_model=ScanResponse, response_model_exclude_none=True, summary="Perform Document OCR and Field Extraction", dependencies=[Depends(verify_rate_limit), Depends(verify_api_key)])
 async def scan_document(
     request: Request,
     file: UploadFile = File(..., description="Document image file (JPEG, PNG, WEBP)"),
-    document_type: Optional[str] = Query(None, description="Optional target document filter: aadhaar_card, pan_card, voter_id, abha_number"),
-    auth: bool = Depends(verify_api_token)
+    document_type: Optional[str] = Query(None, description="Optional target document filter: aadhaar_card, pan_card, voter_id, abha_number")
 ):
     start_time = time.time()
-    request_id = f"req_{uuid.uuid4().hex[:12]}"
+    request_id = getattr(request.state, "request_id", f"req_{uuid.uuid4().hex[:12]}")
     client_ip = request.client.host if request.client else "127.0.0.1"
 
-    # 1. Validate file payload limits
-    content = await file.read()
-    if len(content) > MAX_FILE_SIZE_BYTES:
-        raise HTTPException(status_code=413, detail=f"File too large. Max size is {settings.max_image_size_mb}MB.")
+    # 1. Validate file payload limits safely
+    content = await file.read(settings.max_upload_size_bytes + 1)
+    if len(content) > settings.max_upload_size_bytes:
+        raise APIError(code="IMAGE_TOO_LARGE", message=f"File too large. Max size is {settings.max_upload_size_bytes} bytes.", status_code=413)
+        
+    if not content:
+        raise APIError(code="EMPTY_UPLOAD", message="Uploaded file is empty.", status_code=400)
 
     if file.content_type and file.content_type not in ["image/jpeg", "image/png", "image/webp"]:
-        raise HTTPException(status_code=415, detail="Unsupported media type. Use JPEG, PNG, or WEBP.")
+        raise APIError(code="UNSUPPORTED_FORMAT", message="Unsupported media type. Use JPEG, PNG, or WEBP.", status_code=415)
 
     # 2. Safe In-Memory Image Decoding (Zero disk I/O)
     try:
@@ -162,7 +168,7 @@ async def scan_document(
     except ImageDecodeError as exc:
         # Do not log request bytes, image content, or decoder internals.
         logger.warning("Image decode rejected [%s]: %s", request_id, str(exc))
-        raise HTTPException(status_code=400, detail="Invalid image payload.")
+        raise APIError(code="INVALID_IMAGE", message="Invalid image payload.", status_code=400)
 
     # 3. Fail-safe preprocessing: OCR gets a rectified/enhanced image only
     # when the operation is plausible; otherwise it receives an isolated copy
@@ -198,7 +204,11 @@ async def scan_document(
         selected_extractors = all_legacy_exts
 
     # 5. OCR Processing (Pass 1 - Fast Primary Pass)
-    raw_results = ocr_engine.process_image(img, apply_adaptive_threshold=False)
+    try:
+        raw_results = await ocr_engine.process_image_async(img, apply_adaptive_threshold=False)
+    except TimeoutError:
+        raise APIError(code="REQUEST_TIMEOUT", message="OCR processing timed out.", status_code=504)
+        
     all_text_pass1 = " ".join([l.get('text', '') for l in raw_results])
 
     best_doc_result = None
@@ -216,7 +226,11 @@ async def scan_document(
     if not best_doc_result or best_doc_conf < settings.retry_threshold:
         for rot_code in [cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_90_CLOCKWISE]:
             rotated_img = cv2.rotate(img, rot_code)
-            raw_rot = ocr_engine.process_image(rotated_img, apply_adaptive_threshold=False)
+            try:
+                raw_rot = await ocr_engine.process_image_async(rotated_img, apply_adaptive_threshold=False)
+            except TimeoutError:
+                raise APIError(code="REQUEST_TIMEOUT", message="OCR processing timed out.", status_code=504)
+                
             all_text_rot = " ".join([l.get('text', '') for l in raw_rot])
             for ext in selected_extractors:
                 res = ext.extract(raw_rot, all_text=all_text_rot)
@@ -230,7 +244,11 @@ async def scan_document(
     # 7. OCR Processing (Pass 2 - Adaptive Threshold Fallback ONLY if still below threshold)
     if not best_doc_result or best_doc_conf < settings.retry_threshold:
         logger.info(f"[{request_id}] Primary passes low ({best_doc_conf:.2f}). Running adaptive thresholding pass.")
-        raw_results_pass2 = ocr_engine.process_image(img, apply_adaptive_threshold=True)
+        try:
+            raw_results_pass2 = await ocr_engine.process_image_async(img, apply_adaptive_threshold=True)
+        except TimeoutError:
+            raise APIError(code="REQUEST_TIMEOUT", message="OCR processing timed out.", status_code=504)
+            
         all_text_pass2 = " ".join([l.get('text', '') for l in raw_results_pass2])
 
         for ext in selected_extractors:
@@ -318,9 +336,14 @@ async def scan_document(
                     )
                     return ScanResponse(
                         success=False,
+                        request_id=request_id,
                         document_type=doc_type,
+                        status=doc_conf.decision,
                         identifier=None,
-                        fields={},
+                        fields=fields,
+                        validation={k: __import__('dataclasses').asdict(v) for k, v in val_results.items()},
+                        confidence=__import__('dataclasses').asdict(doc_conf),
+                        processing_time_ms=processing_time_ms,
                         error_code="INCOMPLETE_FIELDS",
                         message=(
                             f"Could not clearly read: {missing}. "
@@ -328,56 +351,63 @@ async def scan_document(
                             "and all text is visible, then rescan."
                         ),
                     )
+                    
+                logger.info(
+                    f"[{request_id}] Success | doc_type={doc_type} | confidence={best_doc_conf:.2f} "
+                    f"| decision={doc_conf.decision} | processing_time={processing_time_ms}ms"
+                )
+
+                # Persist Scan Log
+                scan_logger.log_scan(
+                    request_id=request_id,
+                    document_type=doc_type,
+                    identifier=identifier,
+                    fields=fields,
+                    confidence=best_doc_conf,
+                    processing_time_ms=processing_time_ms,
+                    overall_status=overall_status,
+                    client_ip=client_ip,
+                )
+
+                return ScanResponse(
+                    success=True,
+                    request_id=request_id,
+                    document_type=doc_type,
+                    status=doc_conf.decision,
+                    identifier=identifier,
+                    fields=fields,
+                    validation={k: __import__('dataclasses').asdict(v) for k, v in val_results.items()},
+                    confidence=__import__('dataclasses').asdict(doc_conf),
+                    processing_time_ms=processing_time_ms,
+                )
             except Exception as e:
                 logger.warning(f"[{request_id}] Field parser error for {doc_type}: {e}")
                 overall_status = "ok"
 
-        logger.info(
-            f"[{request_id}] Success | doc_type={doc_type} | confidence={best_doc_conf:.2f} "
-            f"| overall_status={overall_status} | processing_time={processing_time_ms}ms"
-        )
+    logger.warning(f"[{request_id}] Scan Low Confidence / Unrecognized | processing_time={processing_time_ms}ms")
 
-        # Persist Scan Log
-        scan_logger.log_scan(
-            request_id=request_id,
-            document_type=doc_type,
-            identifier=identifier,
-            fields=fields,
-            confidence=best_doc_conf,
-            processing_time_ms=processing_time_ms,
-            overall_status=overall_status,
-            client_ip=client_ip,
-        )
+    # Persist Failed Scan Log
+    scan_logger.log_scan(
+        request_id=request_id,
+        document_type="unknown",
+        identifier=None,
+        fields={},
+        confidence=best_doc_conf,
+        processing_time_ms=processing_time_ms,
+        overall_status="rescan_required",
+        client_ip=client_ip,
+        error_code="LOW_CONFIDENCE",
+        message="Unable to confidently extract the document identifier.",
+    )
 
-        return ScanResponse(
-            success=True,
-            document_type=doc_type,
-            identifier=identifier,
-            fields=fields,
-        )
-
-    else:
-        logger.warning(f"[{request_id}] Scan Low Confidence / Unrecognized | processing_time={processing_time_ms}ms")
-
-        # Persist Failed Scan Log
-        scan_logger.log_scan(
-            request_id=request_id,
-            document_type="unknown",
-            identifier=None,
-            fields={},
-            confidence=best_doc_conf,
-            processing_time_ms=processing_time_ms,
-            overall_status="rescan_required",
-            client_ip=client_ip,
-            error_code="LOW_CONFIDENCE",
-            message="Unable to confidently extract the document identifier.",
-        )
-
-        return ScanResponse(
-            success=False,
-            document_type="unknown",
-            identifier=None,
-            fields={},
-            error_code="LOW_CONFIDENCE",
-            message="Unable to confidently extract the document identifier.",
-        )
+    return ScanResponse(
+        success=False,
+        request_id=request_id,
+        document_type="unknown",
+        status="INVALID",
+        identifier=None,
+        fields={},
+        processing_time_ms=processing_time_ms,
+        error_code="LOW_CONFIDENCE",
+        message="Unable to confidently extract the document identifier.",
+    )
