@@ -5,9 +5,12 @@
   "main": "dist/id-scanner.js",
   "types": "dist/id-scanner.d.ts",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run"
   },
   "devDependencies": {
-    "typescript": "^5.0.0"
+    "@types/node": "^26.4.1",
+    "typescript": "^5.0.0",
+    "vitest": "^4.1.11"
   }
 }

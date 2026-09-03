@@ -4,6 +4,8 @@ import { VideoPreview } from './VideoPreview';
 import { ScannerOverlay } from './ScannerOverlay';
 import { ScannerHUD } from './ScannerHUD';
 import { ScanResultCard } from './ScanResultCard';
+import { ScannerResultCard } from './ScanResultCard';
+import { DeveloperConsole } from './DeveloperConsole';
 import { ScannerState } from '../types';
 import type { CaptureQuality, WorkerAnalysisResult, ScanApiResponse } from '../types';
 import { DEFAULT_CAPTURE_QUALITY_CONFIG } from '../cv/captureQuality';
@@ -521,6 +523,8 @@ export const ScannerContainer: React.FC<ScannerContainerProps> = ({ autoCaptureE
           </div>
         </div>
       )}
+      
+      <DeveloperConsole scanResponse={scanResponse} apiError={apiError} />
     </div>
   );
 };
